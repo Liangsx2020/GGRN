@@ -92,6 +92,13 @@ class GGRN_Layer(nn.Module):
         feat_dy  = self.aggregator(x, edge_index, data.coeff_dy)   # [N, in_channels]
         feat_lap = self.aggregator(x, edge_index, data.coeff_lap)  # [N, in_channels]
 
+        # Normalize stencil outputs to O(1) regardless of resolution
+        # coeff_dx ∝ 1/h, coeff_lap ∝ 1/h² → multiply by h, h² to cancel
+        h_char = data.h_char
+        feat_dx  = feat_dx  * h_char        # O(1/h) * h   = O(1)
+        feat_dy  = feat_dy  * h_char        # O(1/h) * h   = O(1)
+        feat_lap = feat_lap * h_char ** 2   # O(1/h²) * h² = O(1)
+
         # 2. Concatenate: [h, ∂h/∂x, ∂h/∂y, Δh]
         combined = torch.cat([x, feat_dx, feat_dy, feat_lap], dim=1)  #[N, 4 * in_channels]
 
