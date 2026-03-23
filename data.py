@@ -131,6 +131,9 @@ class BasePDEDataGenerator:
         else:
             data.train_idx = None
 
+        # Store characteristic mesh spacing for stencil normalization in model
+        data.h_char = 2.0 / (self.resolution - 1)
+
         return self.post_process_data(data)
 
 

@@ -39,7 +39,7 @@ w_bc: 200.0
 w_jump: 10.0
 w_data: 1000.0     # Supervised data loss weight (0.0 = disabled)
 w_j1: null          # null = use w_jump
-w_j2: null          # null = use w_jump
+w_j2: 0.1           # Low weight: stencil-based flux derivatives are noisy at coarse grids
 j2_scale: null      # null = auto
 
 # --- 6. Output ---

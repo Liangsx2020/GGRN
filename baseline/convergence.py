@@ -57,12 +57,16 @@ def run_convergence_study(args, device):
             phase_name=f"PINN (res={res})", log_interval=1000
         )
 
-        # 3. 收集结果
+        # 3. 收集结果 (与 GGRN 的 mms_metrics.json 保持一致)
         csv_data.append({
             'Resolution': res,
             'h': h,
             'MSE': metrics_pinn['mse'],
             'Rel_L2': metrics_pinn['rel_l2'],
+            'Rel_Linf': metrics_pinn['rel_linf'],
+            'Abs_L2': metrics_pinn['abs_l2'],
+            'Abs_Linf': metrics_pinn['abs_linf'],
+            'Max_Error': metrics_pinn['max_error'],
             'Time(s)': train_time
         })
 
@@ -73,9 +77,11 @@ def run_convergence_study(args, device):
     csv_path = os.path.join(args.save_dir, 'pinn_baseline_results.csv')
     
     with open(csv_path, 'w', encoding='utf-8') as f:
-        f.write("Resolution,h,MSE,Rel_L2,Time(s)\n")
+        f.write("Resolution,h,MSE,Rel_L2,Rel_Linf,Abs_L2,Abs_Linf,Max_Error,Time(s)\n")
         for row in csv_data:
-            f.write(f"{row['Resolution']},{row['h']:.6f},{row['MSE']:.6e},{row['Rel_L2']:.6e},{row['Time(s)']:.2f}\n")
+            f.write(f"{row['Resolution']},{row['h']:.6f},{row['MSE']:.6e},{row['Rel_L2']:.6e},"
+                    f"{row['Rel_Linf']:.6e},{row['Abs_L2']:.6e},{row['Abs_Linf']:.6e},"
+                    f"{row['Max_Error']:.6e},{row['Time(s)']:.2f}\n")
             
     print(f"\n✅ PINN Baseline Study Completed!")
     print(f"📝 Results successfully saved to: {csv_path}")
