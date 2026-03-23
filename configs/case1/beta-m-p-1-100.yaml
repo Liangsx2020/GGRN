@@ -3,14 +3,17 @@
 
 beta_minus: 1.0
 beta_plus: 100.0
-resolution: 16
+
+# resolution: 16
 # resolution: 24
 # resolution: 32
-# resolution: 64
+resolution: 64
+
 num_layers: 2
 epochs: 1000
-save_dir: ./results/case1/beta-m-p-1-100-r-16
+
+# save_dir: ./results/case1/beta-m-p-1-100-r-16
 # save_dir: ./results/case1/beta-m-p-1-100-r-24
 # save_dir: ./results/case1/beta-m-p-1-100-r-32
-# save_dir: ./results/case1/beta-m-p-1-100-r-64
+save_dir: ./results/case1/beta-m-p-1-100-r-64
 

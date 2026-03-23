@@ -6,9 +6,9 @@ beta_plus: 10.0
 
 # 分辨率
 # resolution: 16
-resolution: 24
+# resolution: 24
 # resolution: 32
-# resolution: 64
+resolution: 64
 
 # 层数
 num_layers: 2
@@ -18,7 +18,7 @@ epochs: 1000
 
 # 保存目录
 # save_dir: ./results/case1/beta-m-p-1-10-r-16
-save_dir: ./results/case1/beta-m-p-1-10-r-24
+# save_dir: ./results/case1/beta-m-p-1-10-r-24
 # save_dir: ./results/case1/beta-m-p-1-10-r-32
-# save_dir: ./results/case1/beta-m-p-1-10-r-64
+save_dir: ./results/case1/beta-m-p-1-10-r-64
 
