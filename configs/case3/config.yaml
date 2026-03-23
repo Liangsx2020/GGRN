@@ -1,0 +1,6 @@
+# Case 3: Elliptic interface
+a: 0.6 # options: 0.6, 0.8
+b: 0.4 # options: 0.4, 0.2
+resolution: 32 # options: 16, 24, 32, 64
+epochs: 2000
+save_dir: ./results/case3/

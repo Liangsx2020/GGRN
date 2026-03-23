@@ -1,0 +1,9 @@
+# Case 2: Oscillating Angular Solution
+# u_inner = r²(1+ε·cos(mθ)), u_outer = 0.5r²(1+ε·cos(mθ))+1
+# Only overrides from default.yaml are listed here.
+
+resolution: 32 # options: 16, 24, 32, 64
+m: 3 # options: 3, 5
+epsilon: 0.3
+epochs: 2000
+save_dir: ./results/case2/

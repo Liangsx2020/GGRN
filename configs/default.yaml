@@ -1,0 +1,56 @@
+# G-GRN Default Configuration
+# =============================================
+# This is the SINGLE SOURCE OF TRUTH for all default parameters.
+# Case-specific YAML files only need to override what differs.
+# Priority: CLI args > case YAML > default.yaml
+# =============================================
+
+# --- 1. Basic Settings ---
+device: cuda
+seed: 42
+
+# --- 2. Data Generation ---
+resolution: 32
+r_connect: null    # null = auto-scale: 4.5 / resolution
+max_order: 2
+beta_minus: 1.0
+beta_plus: 10.0
+data_frac: 0.05
+
+# --- 3. Model Architecture ---
+hidden_channels: 128
+num_layers: 6
+
+# --- 4. Training Hyperparameters ---
+epochs: 5000
+lr: 1.0
+scheduler: cosine  # cosine | step | none
+eta_min: 1.0e-6
+grad_clip: 0.0     # 0 = disabled
+
+# L-BFGS specific
+max_iter: 20
+history_size: 50
+line_search_fn: strong_wolfe
+
+# --- 5. Loss Weights ---
+w_pde: 1.0
+w_bc: 200.0
+w_jump: 10.0
+w_data: 1000.0     # Supervised data loss weight (0.0 = disabled)
+w_j1: null          # null = use w_jump
+w_j2: null          # null = use w_jump
+j2_scale: null      # null = auto
+
+# --- 6. Output ---
+save_dir: ./results
+log_interval: 100
+
+# --- 7. Case-specific Parameters ---
+# Case 2: Oscillating solution
+m: 3
+epsilon: 0.3
+
+# Case 3: Elliptic interface
+a: 0.6
+b: 0.4

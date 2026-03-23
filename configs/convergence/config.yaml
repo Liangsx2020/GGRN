@@ -1,0 +1,4 @@
+# 分辨率
+resolutions: 16,24,32,64 # options: 16, 24, 32, 64
+
+save_dir: ./results/convergence/
