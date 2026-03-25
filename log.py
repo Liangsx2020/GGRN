@@ -19,17 +19,17 @@ NUM_LAYERS = 2
 #         )
 
 # --- Case 2: Oscillating Angular Solution ---
-for res in RESOLUTIONS:
-    save_dir = f"./results/case2/r-{res}"
-    os.system(
-        f"python run.py --case oscillating --config configs/case2/config.yaml "
-        f"--resolution {res} --num_layers {NUM_LAYERS} --epochs 2000 "
-        f"--save_dir {save_dir}"
-    )
+# for res in RESOLUTIONS:
+#     save_dir = f"./results/case2/r-{res}"
+#     os.system(
+#         f"python run.py --case oscillating --config configs/case2/config.yaml "
+#         f"--resolution {res} --num_layers {NUM_LAYERS} --epochs 2000 "
+#         f"--save_dir {save_dir}"
+#     )
 
 # --- Case 3: Elliptic Interface ---
 for res in RESOLUTIONS:
-    save_dir = f"./results/case3/r-{res}"
+    save_dir = f"./results/case3/r-{res}-single-phase"
     os.system(
         f"python run.py --case elliptic --config configs/case3/config.yaml "
         f"--resolution {res} --num_layers {NUM_LAYERS} --epochs 2000 "
