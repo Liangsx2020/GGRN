@@ -1,0 +1,543 @@
+% =========================
+% main.tex (Overleaf-ready)
+% =========================
+\documentclass[11pt]{article}
+
+% ---------- Page / Font ----------
+\usepackage[margin=1in]{geometry}
+
+% ---------- Math ----------
+\usepackage{amsmath, amssymb, amsthm, mathtools, bm}
+
+% ---------- Algorithms ----------
+\usepackage[ruled,vlined]{algorithm2e}
+
+% ---------- Figures ----------
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{float}
+\graphicspath{{images/}} % IMPORTANT: figures folder path
+
+% ---------- Citations ----------
+\usepackage[numbers]{natbib} % compatible with many DL venues; use \citet, \citep
+
+% ---------- Links ----------
+\usepackage[colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue]{hyperref}
+\usepackage{authblk}
+
+% =========================
+% Environment Definitions
+% =========================
+% --- 环境定义 ---
+% 1. 定义定理样式 (可选，Plain是默认的斜体内容，Definition通常是正体)
+\theoremstyle{definition} 
+\newtheorem{definition}{Definition}
+
+% 2. 定义 Remark 样式 (通常标题斜体，内容正体)
+\theoremstyle{remark}
+\newtheorem{remark}{Remark}
+
+% 3. 定义 Theorem 样式 (标题加粗，内容斜体)
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}{Lemma}
+
+% =========================
+% SciML Macros
+% =========================
+\newcommand{\mL}{\mathcal{L}}           % Loss
+\newcommand{\Ncal}{\mathcal{N}}        % Neighbors
+\newcommand{\R}{\mathbb{R}}            % Real numbers
+\newtheorem{proposition}{Proposition} % Proposition
+
+% Partial derivative: \pd[2]{u}{x} -> \frac{\partial^2 u}{\partial x^2}
+\newcommand{\pd}[3][]{%
+  \frac{\partial^{#1} #2}{\partial #3^{#1}}%
+}
+
+% Optional: common operators / notation
+\DeclareMathOperator{\diver}{div}
+\DeclareMathOperator{\grad}{grad}
+
+\title{G-GRN: A Graph-based Neural Operator for Elliptic PDEs with Discontinuous Coefficients}
+
+\author[1]{Shuxuan Liang\thanks{Email: \href{mailto:shuxuan0228@hanyang.ac.kr}{shuxuan0228@hanyang.ac.kr}}}
+\author[2]{Second Author\thanks{Email: \href{mailto:second.author@institute.edu}{second.author@institute.edu}}}
+\author[3]{Third Author\thanks{Corresponding author. Email: \href{mailto:third.author@company.com}{third.author@company.com}}}
+
+\affil[1]{Department of Applied Mathematics, XXX University}
+\affil[2]{Institute of Artificial Intelligence, YYY University}
+\affil[3]{Research Lab, ZZZ Corporation}
+\setlength{\affilsep}{1em}
+
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This is a minimal, modular Overleaf template for SciML papers (PINNs, GNNs, PDE solvers).
+It compiles out-of-the-box and demonstrates citations, figures, and algorithms.
+\end{abstract}
+
+\section{Introduction}
+% Physics-Informed Neural Networks (PINNs) \citep{raissi2019pinn} and Graph Neural Networks (GNNs) such as GCN \citep{kipf2017gcn} and GraphSAGE \citep{hamilton2017graphsage} are widely used in SciML.
+
+% We denote the training loss as $\mL(\bm{\theta})$, a neighborhood set as $\Ncal(i)$, and use $\R$ for real-valued spaces.
+% Example derivative notation: $\pd[2]{u}{x}$.
+
+% ==================================================================
+% SECTION 2: 题目 (物理与数学定义)
+% ==================================================================
+\section{Problem Formulation}
+\label{sec:problem}
+
+We focus on elliptic partial differential equations (PDEs) with discontinuous coefficients. These problems appear often in many real-world applications, such as composite material modeling and biomedical imaging \cite{leveque1994immersed, zhou2006fictitious}. In our setup, the computational domain $\Omega \subset \mathbb{R}^2$ is a two-dimensional space. An interface $\Gamma$ divides this space into two separate regions: the interior $\Omega^-$ and the exterior $\Omega^+$.
+
+Inside this domain, the steady-state diffusion process follows the governing equation:
+\begin{equation}
+    -\nabla \cdot (\beta(\mathbf{x}) \nabla u(\mathbf{x})) = f(\mathbf{x}) \quad \text{in} \quad \Omega^- \cup \Omega^+,
+\end{equation}
+where $u$ is the scalar field we want to solve, and $f$ is the source term. A key feature of this problem is that the diffusion coefficient $\beta$ is not continuous. Instead, it jumps across the interface:
+\begin{equation}
+    \beta(\mathbf{x}) =
+    \begin{cases}
+        \beta^- & \text{if } \mathbf{x} \in \Omega^-, \\
+        \beta^+ & \text{if } \mathbf{x} \in \Omega^+,
+    \end{cases}
+\end{equation}
+where $\beta^-$ and $\beta^+$ are distinct positive constants. This sharp change causes significant difficulties. Standard numerical methods, such as Finite Difference (FD) \cite{liszka1980finite} or Finite Element Methods (FEM) \cite{babuvska1970finite}, often fail to give accurate results near the interface. If the mesh does not align exactly with $\Gamma$, these methods typically produce large approximation errors.
+
+To solve this problem uniquely, we enforce two conditions across the interface $\Gamma$. Let $\mathbf{n}$ be the unit normal vector pointing from the interior $\Omega^-$ to the exterior $\Omega^+$. First, we require the solution value to be continuous or have a specific jump:
+\begin{equation}
+    [u]_\Gamma \coloneqq u^+|_\Gamma - u^-|_\Gamma = g_1.
+\end{equation}
+Second, we require the normal flux to balance:
+\begin{equation}
+    \left[\beta \frac{\partial u}{\partial n}\right]_\Gamma \coloneqq \beta^+ \nabla u^+ \cdot \mathbf{n} - \beta^- \nabla u^- \cdot \mathbf{n} = g_2.
+\end{equation}
+Here, $u^+$ and $u^-$ are the values approaching the interface from $\Omega^+$ and $\Omega^-$, respectively. In many physical cases, $g_1$ and $g_2$ are zero, representing perfect contact. However, this condition creates a major challenge. When the ratio $\beta^+/\beta^-$ is large (e.g., 100 or 1000), the gradient $\nabla u$ must change abruptly at the interface to satisfy Eq.~(4). Neural networks struggle to learn such sharp changes because they naturally prefer smooth functions, a phenomenon known as spectral bias \cite{rahaman2019spectral}.
+
+Finally, we define the geometry and boundary conditions. On the outer boundary $\partial\Omega$, we fix the solution values $u = g_D$. For the interface $\Gamma$, we represent it implicitly using a level-set function $\phi(\mathbf{x})$. The interface is the set of points where $\phi(\mathbf{x}) = 0$. We set $\phi < 0$ inside $\Omega^-$ and $\phi > 0$ inside $\Omega^+$. This representation is convenient because it allows us to compute the normal vector easily as $\mathbf{n} = \nabla\phi / |\nabla\phi|$.
+
+These discontinuous coefficients and interface jumps make the problem extremely difficult for standard Physics-Informed Neural Networks (PINNs) \cite{raissi2019physics}. Traditional PINNs calculate derivatives using automatic differentiation, which assumes the solution is smooth everywhere. However, as noted in Eq.~(4), the true solution has a sharp "kink" (discontinuous gradient) at the interface. Due to the "spectral bias" phenomenon \cite{rahaman2019spectral}, fully connected networks tend to smooth out these sharp transitions. This smoothing leads to significant errors, especially in satisfying the flux jump condition \cite{hu2022discontinuity}. Therefore, strictly enforcing these conditions requires a new architecture that explicitly respects the interface geometry. This necessity motivates our proposed graph-based method.
+
+% ==================================================================
+% SECTION 3: 方法论 (你的核心贡献)
+% ==================================================================
+\section{Methodology}
+\label{sec:method}
+
+In this section, we present the G-GRN framework. The overall pipeline involves constructing a topology-aware graph, precomputing physics-based stencils, and training a neural operator to minimize the residual loss.
+
+% ===================== Graph Construction ======================
+\subsection{Graph Construction}
+\label{sec:graph_construction}
+
+To leverage the expressive power of graph neural networks while respecting the physics of the discontinuity, we reformulate the PDE problem on an unstructured point cloud represented as a graph $\mathcal{G} = (\mathcal{V}, \mathcal{E})$. Our construction strategy begins with generating a density-aware node set $\mathcal{V} = \{\mathbf{p}_i\}_{i=1}^{N}$, which combines a uniform background grid with targeted sampling along the interface.
+
+First, a Cartesian grid of resolution $n \times n$ is generated to cover the computational domain $\Omega = [-1,1]^2$. Second, to resolve the sharp transition near the discontinuity, we add concentric rings of nodes on both sides of the interface. For each layer $l = 1, \ldots, L_r$, we place $N_\Gamma$ nodes uniformly in the angular direction at radii $R \pm \delta_l$, where the offset is
+\begin{equation}
+    \delta_l = \frac{w}{2} \cdot \frac{l}{L_r},
+\end{equation}
+and $w$ is the width of the refinement band. In our default setting, $L_r = 2$, $N_\Gamma = 64$, and $w = 0.1$, producing four rings of 64 nodes within a band of width $0.1$ centered on $\Gamma$. The final node set is the union of the grid nodes and the refinement nodes. Each node $i$ carries a feature vector $\mathbf{v}_i = [x_i, y_i, \phi_i, z_i]^\top \in \mathbb{R}^4$, where $\phi_i$ is the level-set value and $z_i = \text{sgn}(\phi_i) \in \{-1, 1\}$ is the region indicator.
+
+Once the nodes are placed, we establish connectivity via a spatial radius search. An edge exists between node $i$ and node $j$ if their Euclidean distance is less than a cutoff radius $r_c$, excluding self-loops. This radius must be large enough to provide at least 5 neighbors per node for quadratic GFD fitting. We set $r_c = 4.5 / n$, where $n$ is the grid resolution. Since the background spacing is $h = 2/n$ on the domain $[-1,1]^2$, this gives $r_c \approx 2.25 h$, which typically yields 15--25 neighbors for interior nodes.
+
+Crucially, treating all edges uniformly is insufficient for interface problems. We therefore partition the edge set $\mathcal{E}$ into two disjoint categories based on the physical medium. \textit{Homophilous edges} connect nodes within the same subdomain ($z_i = z_j$). These edges represent connectivity within a continuous medium and are used exclusively for aggregating generalized finite difference (GFD) coefficients. Conversely, \textit{Heterophilous edges} connect nodes across the interface ($z_i \neq z_j$). Since standard differentiation across the discontinuity is ill-posed, these edges serve instead as carriers for the interface constraints, allowing the network to explicitly penalize the jump conditions. This dichotomy is encoded in the edge attribute $e_{ij} \in \{0, 1\}$, guiding the message passing mechanism. By placing nodes densely near the interface and classifying edges explicitly, our topology provides high-resolution support for evaluating the flux jumps, reducing discretization errors where the solution is least smooth.
+
+% ============================= GFD =============================
+\subsection{Generalized Finite Difference Stencils}
+\label{sec:gfd}
+
+Accurate spatial derivatives are essential for calculating the PDE residual. While structured grids allow for standard finite difference formulas, our unstructured graph requires a mesh-free approach. We employ the Generalized Finite Difference (GFD) method \cite{liszka1980finite, benito2001influence}, formulated as a Weighted Least Squares (WLS) optimization problem to estimate differential operators.
+
+Consider an interior node $i$ at position $\mathbf{p}_i$ and its homophilous neighbors $\mathcal{N}(i)$. Assuming the solution $u$ is locally smooth ($u \in C^2$), the second-order Taylor expansion for a neighbor $j$ is:
+\begin{equation}
+    u_j \approx u_i + \Delta x_j u_x|_i + \Delta y_j u_y|_i + \frac{\Delta x_j^2}{2} u_{xx}|_i + \Delta x_j \Delta y_j u_{xy}|_i + \frac{\Delta y_j^2}{2} u_{yy}|_i,
+\end{equation}
+where $\Delta x_j = x_j - x_i$ and $\Delta y_j = y_j - y_i$. To solve for the derivatives, we construct a linear system that minimizes the weighted approximation error. Let $\mathbf{q}_j = [\Delta x_j, \Delta y_j, \frac{1}{2}\Delta x_j^2, \Delta x_j \Delta y_j, \frac{1}{2}\Delta y_j^2]^\top$ be the geometric basis vector. We define the system matrix $\mathbf{V}$, the weight matrix $\mathbf{W}$, and the unknown derivative vector $\mathbf{d}$ as:
+\begin{equation}
+    \mathbf{V} = [\mathbf{q}_1, \dots, \mathbf{q}_k]^\top, \quad
+    \mathbf{W} = \text{diag}(w_1, \dots, w_k), \quad
+    \mathbf{d} = [u_x, u_y, u_{xx}, u_{xy}, u_{yy}]^\top,
+\end{equation} 
+where $\boldsymbol{\delta} = [\delta u_1, \dots, \delta u_k]^\top$ represents the finite differences. The weights $w_j = \phi(\|\mathbf{p}_j - \mathbf{p}_i\|)$ are determined by a decaying kernel function $\phi$ (e.g., Gaussian) to prioritize closer neighbors. The optimal derivatives are obtained by solving the normal equations:
+\begin{equation}
+    \mathbf{d} = (\mathbf{V}^\top \mathbf{W}^2 \mathbf{V})^{-1} \mathbf{V}^\top \mathbf{W}^2 \boldsymbol{\delta}.
+\end{equation}
+This yields the derivatives as weighted sums of neighbor differences. For instance, the discrete Laplacian weights $w_{ij}^{\Delta}$ are derived from the rows corresponding to $u_{xx}$ and $u_{yy}$ in the pseudo-inverse matrix $\mathbf{V}^+_{\mathbf{W}} = (\mathbf{V}^\top \mathbf{W}^2 \mathbf{V})^{-1} \mathbf{V}^\top \mathbf{W}^2$.
+
+We theoretically characterize the approximation accuracy of this scheme.
+\begin{proposition}[Consistency of GFD Stencil]
+\label{prop:consistency}
+Let $h = \max_{j \in \mathcal{N}(i)} \|\mathbf{p}_j - \mathbf{p}_i\|$ be the local characteristic length. Assuming the node distribution ensures that $\mathbf{V}^\top \mathbf{W}^2 \mathbf{V}$ is invertible, the GFD approximation is consistent. The local truncation error for second-order derivatives scales as $\mathcal{O}(h)$ for general irregular stencils and improves to $\mathcal{O}(h^2)$ for symmetric neighbor distributions.
+\end{proposition}
+
+However, irregular node distributions can lead to numerical instability. We employ an \textit{adaptive order strategy} based on the condition number $\kappa(\mathbf{V}) = \sigma_{\max}(\mathbf{V}) / \sigma_{\min}(\mathbf{V})$, where $\sigma$ denotes the singular values. If $\kappa(\mathbf{V})$ exceeds a stability threshold (e.g., $10^3$) or if the node has insufficient neighbors ($k < 5$), we automatically fall back to a first-order approximation by truncating the basis to linear terms only. This ensures robust gradient estimation even in degenerate geometric configurations.
+
+Crucially, we restrict stencils to homophilous edges ($z_i = z_j$) to satisfy the $C^2$ continuity assumption of the Taylor expansion. Physics across interfaces are handled separately by jump conditions. In terms of implementation, the stencil coefficients are precomputed once. During training, the PDE residual calculation is reduced to a highly efficient sparse matrix operation on the GPU:
+\begin{equation}
+    \mathcal{R}(\mathbf{u}^{(t)}) = \mathbf{L} \mathbf{u}^{(t)} - \mathbf{f},
+\end{equation}
+where $\mathbf{L} \in \mathbb{R}^{N \times N}$ is the sparse Laplacian matrix assembled from $w_{ij}^{\Delta}$, allowing us to leverage optimized tensor kernels (e.g., \texttt{torch.sparse.mm}) for massive scalability.
+
+% ================== Network Architecture ==================
+\subsection{Network Architecture}
+\label{sec:architecture}
+
+The G-GRN architecture approximates the solution operator by embedding the discretized differential structure into the neural message passing. Figure~\ref{fig:architecture} illustrates the complete training pipeline: from graph construction and feature assignment, through the G-GRN processor layers, to the physics-informed loss evaluation.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\linewidth]{images/model-stru-modi.png}
+    \caption{\textbf{Complete training pipeline of the G-GRN framework.}
+    \textbf{(1) Graph Construction:} The domain $[-1,1]^2$ is discretized with interface refinement; GFD stencil coefficients are precomputed on the resulting mesh.
+    \textbf{(2) Node Features:} Each node receives a four-dimensional feature $[x, y, \phi, z]$ combining spatial coordinates, level-set value, and region indicator.
+    \textbf{(3) G-GRN Model:} The raw features are passed through $L$ stacked G-GRN layers, each containing a Derivative Aggregator (GFD message passing) and a three-layer MLP with residual connection, followed by a decoder MLP that outputs the scalar prediction $\hat{u}$.
+    \textbf{(4) Physics-Informed Loss:} The training objective combines a normalized PDE residual, boundary and interface jump conditions, and supervised data loss.
+    \textbf{(5) Graph Structure:} Homophilous edges (intra-region) carry derivative information; heterophilous edges (cross-interface) enforce jump conditions.}
+    \label{fig:architecture}
+\end{figure}
+
+The input to the network is the four-dimensional node feature $\mathbf{v}_i = [x_i, y_i, \phi_i, z_i]^\top \in \mathbb{R}^4$ defined in Section~\ref{sec:graph_construction}, consisting of spatial coordinates, the level-set value, and the region indicator. These features are passed directly to the first G-GRN layer, which maps them from $\mathbb{R}^4$ to the hidden dimension $\mathbb{R}^H$. No separate encoding or projection is applied at the input stage. The derivative aggregation within each G-GRN layer (described below) supplies gradient and curvature information throughout the network, which reduces the need for explicit frequency encoding at the input.
+
+The core computation takes place in $L$ stacked G-GRN layers. Unlike standard graph convolution layers that learn abstract edge weights, our layer explicitly aggregates features to approximate differential operators. In layer $\ell$, for each node $i$, we compute the gradient and Laplacian of the current feature $\mathbf{h}_i^{(\ell)}$ using the frozen GFD stencils over homophilous neighbors:
+\begin{equation}
+    \mathcal{D}[\mathbf{h}^{(\ell)}]_i = \sum_{j \in \mathcal{N}_{homo}(i)} w_{ij}^{\mathcal{D}} (\mathbf{h}_j^{(\ell)} - \mathbf{h}_i^{(\ell)}), \quad \text{for } \mathcal{D} \in \{ \partial_x, \partial_y, \Delta \}.
+\end{equation}
+These derivative features are concatenated with the node's state to form a physics-informed context vector $\mathbf{c}_i = [\mathbf{h}_i^{(\ell)}, \nabla \mathbf{h}_i^{(\ell)}, \Delta \mathbf{h}_i^{(\ell)}] \in \mathbb{R}^{4C}$, where $C$ denotes the hidden dimension. This vector is processed by a three-layer MLP that progressively reduces the dimension ($4C \to 2C \to C \to C$), with Layer Normalization and GELU activation after each of the first two linear layers, followed by a residual connection:
+\begin{align}
+    \mathbf{z}_1 &= \text{GELU}\bigl(\text{LN}(\mathbf{W}_1 \mathbf{c}_i)\bigr), \notag \\
+    \mathbf{z}_2 &= \text{GELU}\bigl(\text{LN}(\mathbf{W}_2 \mathbf{z}_1)\bigr), \\
+    \mathbf{h}_i^{(\ell+1)} &= \mathbf{h}_i^{(\ell)} + \mathbf{W}_3 \mathbf{z}_2, \notag
+\end{align}
+where $\mathbf{W}_1 \in \mathbb{R}^{2C \times 4C}$, $\mathbf{W}_2 \in \mathbb{R}^{C \times 2C}$, and $\mathbf{W}_3 \in \mathbb{R}^{C \times C}$.
+This design functionally mimics a learnable numerical scheme: the network observes the local Taylor expansion (via derivatives) and learns a non-linear correction to evolve the solution.
+
+After $L$ layers of physics-informed evolution, the final embeddings are mapped to the scalar solution $\hat{u}$ via a shallow MLP decoder. From an implementation perspective, the derivative aggregation is efficiently parallelized using the \texttt{scatter\_add} primitive found in graph libraries. By treating the term $w_{ij}^{\mathcal{D}}(\mathbf{h}_j - \mathbf{h}_i)$ as a directional message, the stencil application reduces to a sparse matrix-matrix multiplication scaling linearly with the number of edges. This architecture embodies a clear separation of concerns: the fixed GFD stencils handle the \textit{geometry} (irregular mesh, stencil weights), while the learnable weights handle the \textit{physics} (solution structure). This relieves the network from learning basic discretization rules from scratch, allowing it to focus on approximating the solution operator.
+
+%========================== Loss Formulation =====================================
+\subsection{Physics-Informed Loss Formulation}
+\label{sec:loss}
+
+Training is driven by a composite loss function that enforces the governing PDE, boundary conditions, interface constraints, and optional data supervision. Let $\hat{u}_\theta$ denote the network prediction. We optimize the parameters $\theta$ by minimizing a total loss $\mathcal{L}$:
+\begin{equation}
+    \mathcal{L}(\theta) = \lambda_{\text{pde}} \mathcal{L}_{\text{pde}} + \lambda_{\text{bc}} \mathcal{L}_{\text{bc}} + \lambda_{\Gamma} (\mathcal{L}_{J_1} + \mathcal{L}_{J_2}) + \lambda_{\text{data}} \mathcal{L}_{\text{data}},
+\end{equation}
+where $\lambda_{\text{pde}}, \lambda_{\text{bc}}, \lambda_{\Gamma}, \lambda_{\text{data}}$ are hyperparameters balancing the individual objectives. The first three groups encode the governing physics; the last term provides direct supervision from reference solutions.
+
+The first component addresses the governing equation. Standard PINN formulations \cite{raissi2019physics} typically minimize the residual $r = \| -\nabla \cdot (\beta \nabla \hat{u}) - f \|^2$. However, in high-contrast media where the ratio $\beta^+ / \beta^-$ is large (e.g., $10^2$ to $10^3$), this standard form leads to \textit{gradient pathology} \cite{wang2021understanding}. The loss landscape becomes dominated by the high-$\beta$ subdomain, causing the optimizer to neglect the low-$\beta$ region. To mitigate this stiffness, we employ a normalized strong form loss. By dividing the governing equation by $\beta(\mathbf{x})$, we minimize:
+\begin{equation}
+    \mathcal{L}_{\text{pde}} = \frac{1}{|\mathcal{V}_{\text{int}}|} \sum_{i \in \mathcal{V}_{\text{int}}} \left\| -\Delta \hat{u}_i - \frac{f_i}{\beta_i} \right\|^2.
+\end{equation}
+Here, the Laplacian $\Delta \hat{u}_i$ is computed via the GFD stencils derived in Section~\ref{sec:gfd}. This normalization acts as a preconditioner, balancing the gradient magnitudes from different material phases to accelerate convergence.
+
+A critical aspect of our method is the explicit handling of discontinuities on heterophilous edges. Unlike continuous approximations used in standard solvers, we strictly enforce transmission conditions on edges $\mathcal{E}_{\text{hetero}}$ that cross the interface. Since graph edges are directed and may traverse the interface from $\Omega^-$ to $\Omega^+$ or vice versa, we rely on the destination region indicator $z_j \in \{-1, +1\}$ to ensure consistent orientation. The discrete jump losses for value ($J_1$) and flux ($J_2$) are formulated as:
+\begin{align}
+    \mathcal{L}_{J_1} &= \frac{1}{|\mathcal{E}_{\text{hetero}}|} \sum_{(i,j) \in \mathcal{E}_{\text{hetero}}} \| z_j (\hat{u}_j - \hat{u}_i) - g_{1,ij} \|^2, \\
+    \mathcal{L}_{J_2} &= \frac{1}{|\mathcal{E}_{\text{hetero}}|} \sum_{(i,j) \in \mathcal{E}_{\text{hetero}}} \| z_j (\beta_j \nabla \hat{u}_j \cdot \mathbf{n}_{ij} - \beta_i \nabla \hat{u}_i \cdot \mathbf{n}_{ij}) - g_{2,ij} \|^2.
+\end{align}
+The factor $z_j$ guarantees that the difference term always represents the canonical jump $[u] = u^+ - u^-$. To ensure high-order geometric accuracy, the interface normal $\mathbf{n}_{ij}$ is evaluated at the edge midpoint $\mathbf{x}_{mid} = (\mathbf{x}_i + \mathbf{x}_j)/2$ using the level-set gradient.
+
+Dirichlet boundary conditions are imposed softly via the mean squared error term $\mathcal{L}_{\text{bc}} = \frac{1}{|\mathcal{V}_{\text{bd}}|} \sum \| \hat{u}_i - g_D \|^2$.
+
+In addition to the physics-based terms, we include a supervised data loss that measures the pointwise error against known reference solutions:
+\begin{equation}
+    \mathcal{L}_{\text{data}} = \frac{1}{N} \sum_{i=1}^{N} \| \hat{u}_i - u_i^* \|^2,
+\end{equation}
+where $u_i^*$ is the reference value at node $i$. This term provides a direct regression target that is particularly useful near the interface, where the GFD stencil approximation error is largest.
+
+In our default configuration, we set $\lambda_{\text{pde}} = 1$, $\lambda_{\text{bc}} = 200$, $\lambda_{\Gamma} = 10$, and $\lambda_{\text{data}} = 1000$. The implementation also allows independent weights for the value jump ($\lambda_{J_1}$) and flux jump ($\lambda_{J_2}$); when not specified, both default to $\lambda_{\Gamma}$. For extreme contrast ratios ($\beta^+/\beta^- > 100$), $\lambda_{\text{data}}$ can be annealed during training via curriculum learning (Section~\ref{sec:training}).
+
+%==============================================================================
+\subsection{Training Protocols \& Optimization Strategy}
+\label{sec:training}
+
+Training physics-informed models requires balancing multiple competing loss terms: the PDE residual, boundary conditions, and interface constraints. Below we describe the baseline optimization protocol, followed by two strategies for high-contrast or geometrically complex regimes.
+
+We optimize the network parameters using L-BFGS, a quasi-Newton method that approximates inverse Hessian information from recent gradient history. We set the initial learning rate to $\eta_0 = 1.0$, the history size to $50$, and use the strong Wolfe line search condition. This optimizer suits our setting well: the loss is evaluated over a single fixed graph without mini-batching, and the curvature information helps navigate the multi-objective loss landscape. The learning rate follows a cosine annealing schedule \cite{loshchilov2016sgdr}:
+\begin{equation}
+    \eta(t) = \eta_{\min} + \frac{1}{2}(\eta_0 - \eta_{\min}) \left( 1 + \cos\frac{\pi t}{T} \right),
+\end{equation}
+where $t$ is the current epoch, $T$ is the total training budget (typically $5 \times 10^3$), and $\eta_{\min} = 10^{-6}$. During training, we track the model state with the lowest error. If the loss diverges to NaN, the best state is restored and training stops early.
+
+However, in high-contrast scenarios ($\beta^+ / \beta^- \ge 100$) or inverted configurations, pure physics-based optimization often stagnates due to vanishing gradients in the low-diffusivity region. We address this via \textit{Curriculum Learning} \cite{bengio2009curriculum}, leveraging synthetic data to guide the network toward a valid basin of attraction. We introduce an auxiliary supervision loss $\lambda_{\text{data}} \mathcal{L}_{\text{data}}$ with a linearly decaying weight:
+\begin{equation}
+    \lambda_{\text{data}}(t) = \lambda_{\text{init}} \cdot \max\left(0, 1 - \frac{t}{T_{\text{decay}}}\right) + \lambda_{\text{final}}.
+\end{equation}
+Empirically, setting $\lambda_{\text{init}} = 200$ and $T_{\text{decay}} = 0.8T$ effectively relaxes the optimization problem: the network first learns the coarse solution shape via strong supervision, after which the physics constraints gradually take over to enforce conservation laws.
+
+For problems with non-circular or complex interfaces, we further decouple the learning process into a "Topology-First" two-phase regime. In \textbf{Phase 1} ($t < 0.3T$), the training is purely data-driven ($\lambda_{\text{data}} \gg \lambda_{\text{pde}}$), forcing the network to resolve the interface geometry and solution continuity. In \textbf{Phase 2}, we restore the full physics loss to fine-tune the solution, ensuring exact satisfaction of the flux jumps. This strategy acts as a numerical homotopy method, continuously deforming the loss landscape from a convex supervised problem to the target physics-constrained problem, reducing the final error by an order of magnitude.
+
+% ==================== Experiments ====================
+% ================ Numerical Experiments ===========================
+\section{Numerical Experiments}
+\label{sec:experiments}
+
+% We validate the G-GRN framework through a systematic suite of numerical experiments designed to assess accuracy, robustness, and generalization. The test cases progress in complexity: (i) a manufactured solution on a circular interface for rigorous verification, (ii) an oscillating angular solution to probe high-frequency capture near discontinuities, and (iii) an elliptic interface to evaluate geometric generalization. We further conduct ablation studies to isolate the contribution of each architectural component and a grid convergence analysis to benchmark against standard PINNs.
+
+% %==============================================================================
+% \subsection{Experimental Setup}
+% \label{sec:setup}
+
+% \paragraph{Computational Environment.}
+% All experiments are conducted on a workstation equipped with an NVIDIA RTX 4090 GPU (24 GB VRAM). The framework is implemented in PyTorch 2.2 with PyTorch Geometric 2.5 for graph operations. Training employs mixed-precision (FP16) where applicable, though the reported results use FP32 for reproducibility.
+
+% \paragraph{Default Hyperparameters.}
+% Unless otherwise specified, we adopt the following configuration across all test cases:
+% \begin{itemize}
+%     \item \textbf{Network:} $L=6$ G-GRN layers, hidden dimension $H=128$, Fourier encoding dimension $D=64$ with scale $\sigma=1.0$.
+%     \item \textbf{Graph:} Base resolution $n=32$ ($32 \times 32$ grid), connection radius $r_c = 0.14$ (yielding $\sim$20 neighbors), interface refinement with 64 points per layer across 2 layers.
+%     \item \textbf{Optimization:} Adam optimizer with initial learning rate $\eta_0 = 10^{-3}$, cosine annealing to $\eta_{\min} = 10^{-6}$, gradient clipping at norm $1.0$, trained for $10^4$ epochs.
+%     \item \textbf{Loss weights:} $\lambda_{\text{pde}} = 1.0$, $\lambda_{\text{bc}} = 200.0$, $\lambda_\Gamma = 10.0$.
+% \end{itemize}
+
+% \paragraph{Evaluation Metrics.}
+% We report three error metrics computed against the known analytical solution $u^*$:
+% \begin{align}
+%     \text{MSE} &= \frac{1}{N} \sum_{i=1}^{N} (\hat{u}_i - u_i^*)^2, \\
+%     \text{Rel } L^2 &= \frac{\| \hat{u} - u^* \|_2}{\| u^* \|_2}, \\
+%     \text{Max Error} &= \max_{i} | \hat{u}_i - u_i^* |.
+% \end{align}
+% For stochastic comparisons, we report mean $\pm$ standard deviation over 3 independent runs with different random seeds.
+
+% %==============================================================================
+% \subsection{Case 1: Method of Manufactured Solutions}
+% \label{sec:case1}
+
+% Our first test case employs the Method of Manufactured Solutions (MMS) to enable rigorous verification against a known analytical solution. This canonical benchmark isolates the method's ability to satisfy the governing PDE and interface conditions without conflating with modeling errors.
+
+% \paragraph{Problem Specification.}
+% The computational domain is $\Omega = [-1, 1]^2$ with a circular interface $\Gamma$ of radius $R = 0.5$ centered at the origin. The level-set function is $\phi(\mathbf{x}) = r^2 - R^2$ where $r = \|\mathbf{x}\|$. The diffusion coefficients are set to $\beta^- = 1$ (inside) and $\beta^+ = 10$ (outside), yielding a contrast ratio of $10\times$.
+
+% The manufactured solution is constructed as:
+% \begin{equation}
+%     u(\mathbf{x}) =
+%     \begin{cases}
+%         r^2 & \text{in } \Omega^-, \\
+%         \frac{1}{2} r^2 + 1 & \text{in } \Omega^+.
+%     \end{cases}
+% \end{equation}
+% This piecewise polynomial satisfies the Laplacian operators $\Delta u^- = 4$ and $\Delta u^+ = 2$, leading to constant source terms $f^- = -4\beta^-$ and $f^+ = -2\beta^+$. At the interface $r = R = 0.5$:
+% \begin{align}
+%     [u]_\Gamma &= u^+ - u^- = \left( \frac{R^2}{2} + 1 \right) - R^2 = 1 - \frac{R^2}{2} = 0.875, \\
+%     \left[ \beta \frac{\partial u}{\partial n} \right]_\Gamma &= \beta^+ \cdot R - \beta^- \cdot 2R = 10 \times 0.5 - 1 \times 1 = 4.
+% \end{align}
+% This configuration ensures non-trivial jumps in both value and flux, providing a stringent test of the interface handling.
+
+% \paragraph{Results.}
+% Table~\ref{tab:case1_results} summarizes the performance across different contrast ratios. For the baseline case ($\beta^+/\beta^- = 10$), G-GRN achieves MSE $\approx 10^{-5}$, demonstrating high-fidelity reconstruction of both the smooth bulk solution and the sharp interface transition. The error distribution (Figure~\ref{fig:case1_error}) reveals that residual errors concentrate near the interface, consistent with the expected discretization limitations of the GFD stencils in regions of gradient discontinuity.
+
+% \begin{table}[t]
+%     \centering
+%     \caption{Case 1: MMS verification results across contrast ratios. Training: $10^4$ epochs on $32 \times 32$ base grid with interface refinement.}
+%     \label{tab:case1_results}
+%     \begin{tabular}{cccccc}
+%         \toprule
+%         $\beta^-$ & $\beta^+$ & Contrast & MSE & Rel $L^2$ & Training Time \\
+%         \midrule
+%         1.0 & 2.0 & $2\times$ & $\sim 10^{-5}$ & $\sim 10^{-3}$ & $\sim$2 min \\
+%         1.0 & 10.0 & $10\times$ & $\sim 10^{-5}$ & $\sim 10^{-3}$ & $\sim$2 min \\
+%         1.0 & 100.0 & $100\times$ & $\sim 10^{-4}$ & $\sim 10^{-2}$ & $\sim$3 min \\
+%         0.1 & 1.0 & $10\times$ (rev.) & $\sim 10^{-4}$ & $\sim 10^{-2}$ & $\sim$3 min \\
+%         \bottomrule
+%     \end{tabular}
+% \end{table}
+
+% \paragraph{High-Contrast Regime.}
+% For extreme contrast ratios ($\beta^+/\beta^- = 100$), the standard training protocol exhibits slower convergence due to the gradient imbalance discussed in Section~\ref{sec:loss}. Employing the curriculum learning strategy (Section~\ref{sec:training}) with $\lambda_{\text{data}}^{\text{init}} = 200$ restores stable convergence, achieving MSE $\approx 10^{-4}$. The ``reversed'' configuration ($\beta^- > \beta^+$) poses an additional challenge: the low-diffusivity exterior region receives weaker gradient signals. Maintaining a residual data supervision ($\lambda_{\text{data}}^{\text{final}} = 10$) throughout training prevents solution drift in this regime.
+
+% %==============================================================================
+% \subsection{Case 2: Oscillating Angular Solution}
+% \label{sec:case2}
+
+% The second test case introduces angular dependence to probe the network's ability to capture high-frequency variations near the interface---a scenario where spectral bias is particularly detrimental.
+
+% \paragraph{Problem Specification.}
+% The domain and interface geometry remain identical to Case 1 ($\Omega = [-1,1]^2$, circular interface $R = 0.5$). The manufactured solution is:
+% \begin{equation}
+%     u(r, \theta) = r^2 \left( 1 + \varepsilon \cos(m\theta) \right),
+% \end{equation}
+% where $\theta = \arctan(y/x)$, $m = 3$ is the angular mode number, and $\varepsilon = 0.3$ controls the oscillation amplitude. This solution is \textit{continuous} across the interface ($[u]_\Gamma = 0$), but the flux jump becomes position-dependent:
+% \begin{equation}
+%     \left[ \beta \frac{\partial u}{\partial n} \right]_\Gamma = 2R \left( 1 + \varepsilon \cos(m\theta) \right) (\beta^+ - \beta^-).
+% \end{equation}
+% The source term also acquires angular structure via the Laplacian:
+% \begin{equation}
+%     \Delta u = 4 + \varepsilon (4 - m^2) \cos(m\theta).
+% \end{equation}
+% For $m = 3$, this yields $\Delta u = 4 - 5\varepsilon \cos(3\theta)$, introducing spatial heterogeneity in the PDE residual.
+
+% \paragraph{Challenges.}
+% This test case stresses two aspects of the architecture:
+% \begin{enumerate}
+%     \item \textbf{Fourier encoding necessity:} The $\cos(3\theta)$ variation requires the network to resolve frequency content that standard MLPs struggle with due to spectral bias.
+%     \item \textbf{Non-constant jump target:} The flux jump $J_2(\theta)$ varies along the interface, demanding accurate local derivative estimation via the GFD stencils.
+% \end{enumerate}
+
+% \paragraph{Results.}
+% Figure~\ref{fig:case2_results} presents the solution field and interface profile. G-GRN successfully captures the threefold angular oscillation, achieving MSE $\approx 8.8 \times 10^{-3}$ after $5 \times 10^3$ epochs. The solution profile at the interface (Figure~\ref{fig:case2_results}, bottom left) shows excellent agreement between predicted and exact values across all angles, confirming that the Fourier encoding effectively mitigates spectral bias. Gradient clipping proves essential in this case, as the oscillating source term induces larger gradient magnitudes during early training.
+
+% \begin{remark}
+%     Removing the Fourier encoding from the architecture (ablation A1, Section~\ref{sec:ablation}) increases the MSE by approximately one order of magnitude, underscoring its critical role in resolving angular variations.
+% \end{remark}
+
+% %==============================================================================
+% \subsection{Case 3: Elliptic Interface}
+% \label{sec:case3}
+
+% The third test case generalizes beyond circular geometry to assess the framework's robustness to non-trivial interface shapes, a prerequisite for practical applications involving irregular inclusions.
+
+% \paragraph{Problem Specification.}
+% The interface $\Gamma$ is now an ellipse centered at the origin:
+% \begin{equation}
+%     \Gamma: \quad \frac{x^2}{a^2} + \frac{y^2}{b^2} = 1, \quad a = 0.6, \; b = 0.4.
+% \end{equation}
+% The level-set function is $\phi(\mathbf{x}) = x^2/a^2 + y^2/b^2 - 1$. We define the normalized coordinate $\xi = x^2/a^2 + y^2/b^2$ and construct the solution:
+% \begin{equation}
+%     u(\mathbf{x}) =
+%     \begin{cases}
+%         \xi & \text{in } \Omega^-, \\
+%         c \cdot \xi + d & \text{in } \Omega^+,
+%     \end{cases}
+% \end{equation}
+% with $c = 0.5$ and $d = 0.625$. This yields a mild value jump $[u]_\Gamma = c + d - 1 = 0.125$ (12.5\% discontinuity). The Laplacian is constant within each region:
+% \begin{equation}
+%     \Delta \xi = \frac{2}{a^2} + \frac{2}{b^2} \approx 18.06,
+% \end{equation}
+% leading to source terms $f^- = -\beta^- \Delta \xi$ and $f^+ = -c \beta^+ \Delta \xi$.
+
+% \paragraph{Geometric Complexity.}
+% Unlike the radially symmetric circle, the ellipse introduces:
+% \begin{itemize}
+%     \item \textbf{Anisotropic curvature:} The interface normal $\mathbf{n} = (x/a^2, y/b^2)^\top / \|(x/a^2, y/b^2)\|$ varies non-uniformly along $\Gamma$.
+%     \item \textbf{Position-dependent flux jump:} The normal derivative factor $\sqrt{x^2/a^4 + y^2/b^4}$ modulates $J_2$ along the interface.
+% \end{itemize}
+% These features demand accurate local geometry estimation, which our edge-midpoint normal approximation (Section~\ref{sec:loss}) addresses.
+
+% \paragraph{Two-Phase Training.}
+% Empirically, simultaneous optimization of the physics loss and geometric adaptation proves challenging for elliptic interfaces. We therefore employ the two-phase strategy (Section~\ref{sec:training}):
+% \begin{itemize}
+%     \item \textbf{Phase 1} (epochs $1$--$3300$): Pure data-driven training with $\lambda_{\text{data}} = 1000$, $\lambda_{\text{pde}} = 0$. The network learns the solution shape without physics constraints.
+%     \item \textbf{Phase 2} (epochs $3301$--$10000$): Physics-informed fine-tuning with restored loss weights and $\lambda_{\text{data}} = 100$ to maintain accuracy while enforcing conservation.
+% \end{itemize}
+
+% \paragraph{Results.}
+% Table~\ref{tab:case3_results} compares the two-phase strategy against simultaneous training. The topology-first approach achieves MSE $\approx 8.2 \times 10^{-4}$, an order of magnitude improvement over naive optimization (MSE $\approx 6 \times 10^{-3}$). Figure~\ref{fig:case3_results} shows that the error concentrates along the ellipse's major axis, where the curvature is lowest and the GFD stencil's approximation error is largest.
+
+% \begin{table}[t]
+%     \centering
+%     \caption{Case 3: Elliptic interface results. Two-phase training significantly improves accuracy.}
+%     \label{tab:case3_results}
+%     \begin{tabular}{lcc}
+%         \toprule
+%         Training Strategy & Final MSE & Rel $L^2$ \\
+%         \midrule
+%         Simultaneous (baseline) & $\sim 6 \times 10^{-3}$ & $\sim 5 \times 10^{-2}$ \\
+%         Two-phase (proposed) & $\sim 8.2 \times 10^{-4}$ & $\sim 2 \times 10^{-2}$ \\
+%         \bottomrule
+%     \end{tabular}
+% \end{table}
+
+% %==============================================================================
+% \subsection{Ablation Studies}
+% \label{sec:ablation}
+
+% We conduct four ablation experiments to quantify the contribution of each architectural and methodological component. All ablations use the Case 1 setup ($\beta^- = 1$, $\beta^+ = 10$, circular interface) with $10^4$ epochs and 3 independent runs for statistical significance.
+
+% \paragraph{A1: Fourier Encoding.}
+% We compare the full G-GRN model against a variant where the Gaussian Fourier encoding is replaced by direct coordinate input $[x, y, \phi, z]$. Table~\ref{tab:ablation} shows that removing Fourier features degrades MSE by approximately $\mathbf{10\times}$, confirming that the encoding is essential for capturing the solution's fine structure near the interface. The performance gap widens for oscillating solutions (Case 2), where high-frequency content dominates.
+
+% \paragraph{A2: GFD Stencil Order.}
+% We compare first-order ($k=2$ basis terms: $[\Delta x, \Delta y]$) versus second-order ($k=5$ basis terms including quadratic terms) GFD stencils. The second-order scheme achieves approximately $\mathbf{2\times}$ lower MSE, as it captures curvature information essential for accurate Laplacian estimation. However, the first-order fallback remains critical for boundary nodes with insufficient neighbors.
+
+% \paragraph{A3: Loss Weight Sensitivity.}
+% We vary $\lambda_{\text{bc}}$ over $\{50, 100, 200, 400\}$ and $\lambda_\Gamma$ over $\{1, 10, 30, 50\}$. Results indicate that:
+% \begin{itemize}
+%     \item Insufficient boundary weight ($\lambda_{\text{bc}} < 100$) leads to solution drift near $\partial\Omega$.
+%     \item Excessive jump weight ($\lambda_\Gamma > 30$) destabilizes early training by over-penalizing interface errors before the bulk solution converges.
+% \end{itemize}
+% The default $\lambda_{\text{bc}} = 200$, $\lambda_\Gamma = 10$ provides a robust balance across test cases.
+
+% \paragraph{A4: Network Depth.}
+% We evaluate $L \in \{4, 6, 8\}$ G-GRN layers. As shown in Table~\ref{tab:ablation}, $L=6$ achieves the optimal trade-off: shallower networks ($L=4$) underfit the solution, while deeper networks ($L=8$) exhibit marginally higher error due to optimization difficulty without significant accuracy gains.
+
+% \begin{table}[t]
+%     \centering
+%     \caption{Ablation study results on Case 1. Values are MSE (mean $\pm$ std over 3 runs).}
+%     \label{tab:ablation}
+%     \begin{tabular}{llcc}
+%         \toprule
+%         Ablation & Variant & MSE & Improvement \\
+%         \midrule
+%         \multirow{2}{*}{A1: Fourier}
+%             & With encoding (baseline) & $(1.2 \pm 0.2) \times 10^{-5}$ & -- \\
+%             & Without encoding & $(1.1 \pm 0.3) \times 10^{-4}$ & $\mathbf{10\times}$ \\
+%         \midrule
+%         \multirow{2}{*}{A2: GFD Order}
+%             & Order 2 (baseline) & $(1.2 \pm 0.2) \times 10^{-5}$ & -- \\
+%             & Order 1 only & $(2.5 \pm 0.4) \times 10^{-5}$ & $\mathbf{2\times}$ \\
+%         \midrule
+%         \multirow{3}{*}{A4: Depth}
+%             & $L = 4$ & $(2.8 \pm 0.5) \times 10^{-5}$ & -- \\
+%             & $L = 6$ (baseline) & $(1.2 \pm 0.2) \times 10^{-5}$ & optimal \\
+%             & $L = 8$ & $(1.5 \pm 0.3) \times 10^{-5}$ & -- \\
+%         \bottomrule
+%     \end{tabular}
+% \end{table}
+
+% %==============================================================================
+% \subsection{Grid Convergence Analysis}
+% \label{sec:convergence}
+
+% A key indicator of numerical method quality is its convergence behavior under mesh refinement. We compare G-GRN against a vanilla PINN baseline to isolate the benefit of our graph-based, GFD-informed architecture.
+
+% \paragraph{Baseline: Vanilla PINN.}
+% The baseline is a standard coordinate-based MLP with 6 hidden layers of width 128 and $\tanh$ activations. Derivatives are computed via automatic differentiation, and the loss comprises only the normalized PDE residual and boundary conditions---no explicit interface handling is employed.
+
+% \paragraph{Experimental Protocol.}
+% We train both methods on base grids of resolution $n \in \{16, 32, 64, 128\}$, corresponding to mesh spacings $h = 2/n \in \{0.125, 0.0625, 0.03125, 0.015625\}$. For G-GRN, interface refinement is applied consistently. Each configuration is trained for $10^4$ epochs, and we report MSE, Rel $L^2$, and Max Error.
+
+% \paragraph{Results.}
+% Figure~\ref{fig:convergence} plots the error metrics against grid spacing on log-log axes. G-GRN exhibits consistent error reduction under refinement, with an empirical convergence rate of approximately $O(h^{1.5})$ in Rel $L^2$---sub-optimal compared to classical second-order finite differences, but significantly better than the vanilla PINN, which shows negligible improvement beyond $n=32$. At the finest resolution ($n=128$), G-GRN achieves:
+% \begin{equation}
+%     \text{Rel } L^2 \approx 2 \times 10^{-3}, \quad \text{vs. PINN: } 5 \times 10^{-2}.
+% \end{equation}
+% This represents a $\mathbf{25\times}$ accuracy improvement over the baseline.
+
+% \begin{table}[t]
+%     \centering
+%     \caption{Grid convergence comparison: G-GRN vs. vanilla PINN on Case 1.}
+%     \label{tab:convergence}
+%     \begin{tabular}{ccccc}
+%         \toprule
+%         \multirow{2}{*}{Resolution $n$} & \multicolumn{2}{c}{G-GRN} & \multicolumn{2}{c}{PINN} \\
+%         \cmidrule(lr){2-3} \cmidrule(lr){4-5}
+%         & MSE & Rel $L^2$ & MSE & Rel $L^2$ \\
+%         \midrule
+%         16 & $3.2 \times 10^{-4}$ & $1.1 \times 10^{-2}$ & $4.5 \times 10^{-3}$ & $4.2 \times 10^{-2}$ \\
+%         32 & $1.2 \times 10^{-5}$ & $2.2 \times 10^{-3}$ & $3.8 \times 10^{-3}$ & $3.9 \times 10^{-2}$ \\
+%         64 & $4.5 \times 10^{-6}$ & $1.3 \times 10^{-3}$ & $3.5 \times 10^{-3}$ & $3.7 \times 10^{-2}$ \\
+%         128 & $2.1 \times 10^{-6}$ & $9.1 \times 10^{-4}$ & $3.2 \times 10^{-3}$ & $3.5 \times 10^{-2}$ \\
+%         \bottomrule
+%     \end{tabular}
+% \end{table}
+
+% \paragraph{Discussion.}
+% The PINN's stagnation stems from its inability to resolve the gradient discontinuity at $\Gamma$: automatic differentiation computes a smooth global derivative field, which cannot represent the jump in $\nabla u$. In contrast, G-GRN's region-restricted stencils respect the local regularity, and the explicit jump loss on heterophilous edges provides direct supervision of the interface physics. This architectural separation---bulk physics via GFD, interface physics via jump constraints---is the key enabler of mesh-convergent behavior.
+
+% \begin{remark}
+%     The observed convergence rate ($O(h^{1.5})$) is sub-quadratic, likely due to the unstructured nature of the point cloud near the interface. Classical finite difference analysis assumes regular grids; on irregular meshes, the GFD pseudo-inverse introduces geometric discretization errors that limit asymptotic convergence. Future work could explore adaptive mesh refinement strategies to recover optimal rates.
+% \end{remark}
+
+
+% ==================== Conclusion ====================
+\section{Conclusion}
+This template demonstrates a clean SciML-ready project structure with modular bibliography and figure handling.
+
+% ---------- Bibliography ----------
+\bibliographystyle{plainnat}  % or unsrtnat
+\bibliography{reference}
+
+\end{document}

@@ -81,7 +81,8 @@ def main():
         crit_p1 = ConsistentStrongFormLoss(w_pde=0.0, w_bc=0.0, w_jump=0.0, w_data=1000.0)
         trainer.fit(data, crit_p1, epochs=phase1_epochs, lr=args.lr * 2, phase_name="Phase 1 (Data-Driven)")
         
-        crit_p2 = ConsistentStrongFormLoss(w_pde=args.w_pde, w_bc=args.w_bc, w_jump=args.w_jump, w_data=100.0)
+        crit_p2 = ConsistentStrongFormLoss(w_pde=args.w_pde, w_bc=args.w_bc, w_jump=args.w_jump, w_data=100.0,
+                                           w_j1=args.w_j1, w_j2=args.w_j2, j2_scale=args.j2_scale)
         hist, metrics, t_time = trainer.fit(data, crit_p2, epochs=phase2_epochs, lr=args.lr * 0.5, phase_name="Phase 2 (Physics-Informed)")
     else:
         criterion = ConsistentStrongFormLoss(

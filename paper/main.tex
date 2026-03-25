@@ -1,0 +1,359 @@
+% =========================
+% main.tex (Overleaf-ready)
+% =========================
+\documentclass[11pt]{article}
+
+% ---------- Page / Font ----------
+\usepackage[margin=1in]{geometry}
+
+% ---------- Math ----------
+\usepackage{amsmath, amssymb, amsthm, mathtools, bm}
+
+% ---------- Algorithms ----------
+\usepackage[ruled,vlined]{algorithm2e}
+
+% ---------- Figures ----------
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{float}
+\graphicspath{{images/}} % IMPORTANT: figures folder path
+
+% ---------- Citations ----------
+\usepackage[numbers]{natbib} % compatible with many DL venues; use \citet, \citep
+
+% ---------- Links ----------
+\usepackage[colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue]{hyperref}
+\usepackage{authblk}
+
+% =========================
+% Environment Definitions
+% =========================
+% --- 环境定义 ---
+% 1. 定义定理样式 (可选，Plain是默认的斜体内容，Definition通常是正体)
+\theoremstyle{definition} 
+\newtheorem{definition}{Definition}
+
+% 2. 定义 Remark 样式 (通常标题斜体，内容正体)
+\theoremstyle{remark}
+\newtheorem{remark}{Remark}
+
+% 3. 定义 Theorem 样式 (标题加粗，内容斜体)
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}{Lemma}
+
+% =========================
+% SciML Macros
+% =========================
+\newcommand{\mL}{\mathcal{L}}           % Loss
+\newcommand{\Ncal}{\mathcal{N}}        % Neighbors
+\newcommand{\R}{\mathbb{R}}            % Real numbers
+
+% Partial derivative: \pd[2]{u}{x} -> \frac{\partial^2 u}{\partial x^2}
+\newcommand{\pd}[3][]{%
+  \frac{\partial^{#1} #2}{\partial #3^{#1}}%
+}
+
+% Optional: common operators / notation
+\DeclareMathOperator{\diver}{div}
+\DeclareMathOperator{\grad}{grad}
+
+\title{G-GRN: A Graph-based Neural Operator for Elliptic PDEs with Discontinuous Coefficients}
+
+\author[1]{Shuxuan Liang\thanks{Email: \href{mailto:shuxuan0228@hanyang.ac.kr}{shuxuan0228@hanyang.ac.kr}}}
+\author[2]{Second Author\thanks{Email: \href{mailto:second.author@institute.edu}{second.author@institute.edu}}}
+\author[3]{Third Author\thanks{Corresponding author. Email: \href{mailto:third.author@company.com}{third.author@company.com}}}
+
+\affil[1]{Department of Applied Mathematics, XXX University}
+\affil[2]{Institute of Artificial Intelligence, YYY University}
+\affil[3]{Research Lab, ZZZ Corporation}
+\setlength{\affilsep}{1em}
+
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This is a minimal, modular Overleaf template for SciML papers (PINNs, GNNs, PDE solvers).
+It compiles out-of-the-box and demonstrates citations, figures, and algorithms.
+\end{abstract}
+
+\section{Introduction}
+Physics-Informed Neural Networks (PINNs) \citep{raissi2019pinn} and Graph Neural Networks (GNNs) such as GCN \citep{kipf2017gcn} and GraphSAGE \citep{hamilton2017graphsage} are widely used in SciML.
+
+We denote the training loss as $\mL(\bm{\theta})$, a neighborhood set as $\Ncal(i)$, and use $\R$ for real-valued spaces.
+Example derivative notation: $\pd[2]{u}{x}$.
+
+\section{Problem Formulation}
+
+We consider elliptic partial differential equations with discontinuous coefficients, a class of problems ubiquitously found in composite material modeling, multi-phase flow simulation, and biomedical imaging \cite{leveque1994immersed, zhou2006fictitious}. The computational domain $\Omega \subset \mathbb{R}^2$ is partitioned by an immersed interface $\Gamma$ into two non-overlapping subdomains: an interior region $\Omega^-$ and an exterior region $\Omega^+$, such that $\bar{\Omega} = \bar{\Omega}^- \cup \bar{\Omega}^+$.
+
+The steady-state diffusion process in such heterogeneous media is governed by
+\begin{equation}
+    -\nabla \cdot (\beta(\mathbf{x}) \nabla u(\mathbf{x})) = f(\mathbf{x}) \quad \text{in} \quad \Omega^- \cup \Omega^+,
+\end{equation}
+where $u$ denotes the scalar potential field and $f$ is a distributed source term. The diffusion coefficient $\beta$ exhibits a jump discontinuity across the interface:
+\begin{equation}
+    \beta(\mathbf{x}) =
+    \begin{cases}
+        \beta^- & \text{if } \mathbf{x} \in \Omega^-, \\
+        \beta^+ & \text{if } \mathbf{x} \in \Omega^+,
+    \end{cases}
+\end{equation}
+where $\beta^-$ and $\beta^+$ are distinct positive constants. This piecewise-constant structure captures the core complexity of interface problems: standard numerical schemes (e.g., FD \cite{liszka1980finite} or FEM \cite{babuvska1970finite}) suffer from $O(1)$ approximation errors near $\Gamma$ unless the mesh explicitly conforms to the interface or specialized enrichment functions are employed.
+
+Well-posedness requires two transmission conditions across $\Gamma$. Let $\mathbf{n}$ denote the unit normal vector pointing from $\Omega^-$ to $\Omega^+$. We impose the continuity of the solution (value jump):
+\begin{equation}
+    [u]_\Gamma \coloneqq u^+|_\Gamma - u^-|_\Gamma = g_1,
+\end{equation}
+and the balance of normal flux (flux jump):
+\begin{equation}
+    \left[\beta \frac{\partial u}{\partial n}\right]_\Gamma \coloneqq \beta^+ \nabla u^+ \cdot \mathbf{n} - \beta^- \nabla u^- \cdot \mathbf{n} = g_2,
+\end{equation}
+where $u^\pm$ denote the limiting values from $\Omega^\pm$, and $g_1, g_2$ are prescribed jump data. While homogeneous conditions ($g_1=g_2=0$) represent ideal contact, non-zero jumps model physical phenomena such as contact resistance or interfacial sources. 
+Crucially, when the contrast ratio $\beta^+/\beta^-$ is large (e.g., $10^2 \sim 10^3$), the normal derivative must undergo a sharp transition to satisfy flux continuity. This results in a solution $u$ that is continuous ($C^0$) but has discontinuous gradients across $\Gamma$, posing severe regularization challenges for neural network approximations favoring smooth spectral bias.
+
+On the exterior boundary $\partial\Omega$, we prescribe Dirichlet conditions $u = g_D$. The interface $\Gamma$ is implicitly defined via a level-set function $\phi: \Omega \to \mathbb{R}$, such that $\Gamma = \{\mathbf{x} \in \Omega \mid \phi(\mathbf{x}) = 0\}$. We adopt the convention that $\phi(\mathbf{x}) < 0$ for $\mathbf{x} \in \Omega^-$ and $\phi(\mathbf{x}) > 0$ for $\mathbf{x} \in \Omega^+$. This implicit representation allows for efficient calculation of the interface normal via normalization: $\mathbf{n} = \nabla\phi / |\nabla\phi|$.
+
+\begin{remark}[Challenges for Learning-based Solvers]
+    The combination of coefficient discontinuity and strict interface jump conditions renders this problem particularly difficult for Physics-Informed Neural Networks (PINNs) \cite{raissi2019physics}. Standard PINNs, which rely on pointwise PDE residuals via automatic differentiation, struggle to capture the gradient discontinuity (or "kink") at $\Gamma$ \cite{jagtap2020conservative, hu2022discontinuity}. The spectral bias of MLPs tends to smooth out these sharp transitions, leading to significant errors in the flux jump condition Eq.~(4) \cite{rahaman2019spectral}. Addressing this requires a discrete architecture capable of explicitly encoding the interface topology—a motivation for our proposed graph-based formulation.
+\end{remark}
+
+%==============================================================================
+\subsection{Graph Construction}
+\label{sec:graph_construction}
+
+To leverage the expressive power of graph neural networks while respecting the physics of the discontinuity, we reformulate the PDE problem on an unstructured point cloud represented as a graph $\mathcal{G} = (\mathcal{V}, \mathcal{E})$. The construction proceeds in three stages: density-aware node generation, proximity-based edge formation, and physics-informed edge classification.
+
+\paragraph{Node Generation via Stratified Refinement.}
+The node set $\mathcal{V} = \{\mathbf{p}_i\}_{i=1}^{N}$ is constructed by superimposing a background grid with targeted refinement near the interface. First, a uniform Cartesian grid of resolution $n \times n$ is generated to cover the computational domain $\Omega = [-1,1]^2$. Second, to resolve the sharp gradients and support accurate derivative computation near the discontinuity, we employ a \textit{stratified refinement strategy}. Instead of placing nodes solely on the interface $\Gamma$, we generate $L$ concentric layers of auxiliary nodes in the immediate vicinity of $\Gamma$. For a circular interface of radius $R$, the refined positions are given by:
+\begin{equation}
+    \mathbf{p}_{k,l} = (R \pm \delta_l) \cdot (\cos\theta_k, \sin\theta_k), \quad l=1,\dots,L,
+\end{equation}
+where $\delta_l$ is a small radial offset (e.g., width defined by cell size $h$). This creates a band of high-density nodes straddling the interface, ensuring that nodes close to $\Gamma$ possess sufficient neighbors within their respective subdomains ($|\mathcal{N}_{homo}| \ge 5$) for stable stencil computation. The final set $\mathcal{V}$ is the union of grid nodes and refinement nodes. Each node $i$ carries a feature vector $\mathbf{v}_i = [x_i, y_i, \phi_i, z_i]^\top \in \mathbb{R}^4$, where $\phi_i$ is the level-set value and $z_i = \text{sgn}(\phi_i) \in \{-1, 1\}$ is the corrected region indicator.
+
+\paragraph{Edge Formation.}
+Connectivity is established via a spatial radius search. We define the edge set as $\mathcal{E} = \{(i, j) : \|\mathbf{p}_i - \mathbf{p}_j\| < r_c\}$, excluding self-loops. The cutoff radius $r_c$ is a critical hyperparameter: it must be sufficiently large to capture the local stencil pattern (requiring at least 5 neighbors for quadratic fitting), yet compact enough to maintain computational efficiency. In our experiments, we set $r_c \approx 2.2 h$ (where $h$ is the background grid spacing), which typically yields 15--25 neighbors for interior nodes.
+
+\paragraph{Region-Aware Edge Classification.}
+A core contribution of our framework is the partitioning of edges based on the physical medium. We classify edges into two disjoint sets $\mathcal{E} = \mathcal{E}_{homo} \cup \mathcal{E}_{hetero}$.
+
+\textbf{Homophilous edges} ($\mathcal{E}_{homo}$) connect nodes with the same region indicator ($z_i = z_j$). These edges represent connectivity within a continuous medium ($\Omega^-$ or $\Omega^+$) and are exclusively used for aggregating generalized finite difference (GFD) coefficients.
+
+\textbf{Heterophilous edges} ($\mathcal{E}_{hetero}$) connect nodes across the interface ($z_i \neq z_j$). Due to the discontinuity in coefficients $\beta$ and gradients $\nabla u$, standard differentiation across these edges is ill-posed. Instead, these edges serve as carriers for the interface constraints, allowing the network to explicitly evaluate and penalize the jump conditions $[u]$ and $[\beta \partial_n u]$. This dichotomy is encoded in the edge attribute $e_{ij} \in \{0, 1\}$, guiding the message passing mechanism to route information through the appropriate physical pathway.
+
+\begin{remark}
+    The stratified refinement strategy is superior to simple on-interface sampling. By placing nodes slightly offset from $\Gamma$, we avoid the singularity at $\phi=0$ during region identification and ensure that the GFD stencils for nodes near the interface are well-conditioned, having "backup" neighbors in the direction normal to the interface.
+\end{remark}
+
+%==============================================================================
+\subsection{Generalized Finite Difference Stencils}
+\label{sec:gfd}
+
+Accurate computation of spatial derivatives is pivotal for enforcing the PDE residual. While structured grids allow for standard finite difference stencils, our unstructured graph topology necessitates a mesh-free approach. We adopt the Generalized Finite Difference (GFD) method \cite{liszka1980finite, benito2001influence}, which fits local polynomials via weighted least squares to recover differential operators.
+
+\textbf{Local Polynomial Approximation.}
+Consider an interior node $i$ at $\mathbf{p}_i$ with neighborhood $\mathcal{N}(i) \subset \mathcal{E}_{\mathrm{homo}}$. Assuming the solution $u$ is locally smooth, the second-order Taylor expansion for a neighbor $j \in \mathcal{N}(i)$ is:
+\begin{equation}
+    u_j \approx u_i + \Delta x_j u_x|_i + \Delta y_j u_y|_i + \frac{\Delta x_j^2}{2} u_{xx}|_i + \Delta x_j \Delta y_j u_{xy}|_i + \frac{\Delta y_j^2}{2} u_{yy}|_i,
+\end{equation}
+where $\Delta x_j = x_j - x_i$ and $\Delta y_j = y_j - y_i$. Let $\delta u_j = u_j - u_i$. We can express the geometric relation for all $k = |\mathcal{N}(i)|$ neighbors as an overdetermined linear system $\mathbf{V} \mathbf{d} \approx \boldsymbol{\delta}$. 
+
+To ensure compactness, let $\mathbf{q}_j = [\Delta x_j, \Delta y_j, \frac{1}{2}\Delta x_j^2, \Delta x_j \Delta y_j, \frac{1}{2}\Delta y_j^2]^\top$ denote the geometric basis vector for neighbor $j$. The system matrix $\mathbf{V} \in \mathbb{R}^{k \times 5}$ is composed of rows $\mathbf{q}_j^\top$:
+\begin{equation}
+    \mathbf{V} = [\mathbf{q}_1, \dots, \mathbf{q}_k]^\top, \quad
+    \mathbf{d} = [u_x, u_y, u_{xx}, u_{xy}, u_{yy}]^\top, \quad
+    \boldsymbol{\delta} = [\delta u_1, \dots, \delta u_k]^\top.
+\end{equation}
+Assuming $k \geq 5$ and non-collinear neighbors, we solve for the derivative vector $\mathbf{d}$ via the Moore--Penrose pseudo-inverse $\mathbf{V}^+ = (\mathbf{V}^\top \mathbf{V})^{-1} \mathbf{V}^\top$:
+\begin{equation}
+    \mathbf{d} = \mathbf{V}^+ \boldsymbol{\delta}.
+\end{equation}
+The differential operators are thus expressed as linear aggregations of neighbor differences. Specifically, the Laplacian weights $w_{ij}^{\Delta}$ are derived by summing the rows corresponding to $u_{xx}$ and $u_{yy}$:
+\begin{equation}
+    \nabla^2 u \big|_i = \sum_{j \in \mathcal{N}(i)} w_{ij}^{\Delta} \delta u_j, \quad \text{with } w_{ij}^{\Delta} = [\mathbf{V}^+]_{3,j} + [\mathbf{V}^+]_{5,j}.
+\end{equation}
+First-order derivatives are extracted similarly from the first two rows of $\mathbf{V}^+$.
+
+\textbf{Adaptive Order Strategy.}
+To ensure robustness on irregular point clouds, we employ an adaptive fallback strategy.
+(1) \textit{Order 2}: If $k \ge 5$ and the condition number $\kappa(\mathbf{V})$ is low, we compute the full Hessian as above.
+(2) \textit{Order 1}: If the system is underdetermined ($k < 5$) or ill-conditioned, we truncate the basis to linear terms $\mathbf{q}_j = [\Delta x_j, \Delta y_j]^\top$. This yields a robust first-order approximation for gradients ($\nabla u$), though the Laplacian term is dropped.
+(3) \textit{Boundary}: Isolated nodes with insufficient support are excluded from the interior PDE loss.
+
+\textbf{Restriction to Homophilous Edges.}
+A critical design choice is restricting the stencil computation to \textbf{homophilous edges}. The Taylor expansion in Eq.~(10) implicitly assumes $C^2$ continuity, which is violated if $\mathcal{N}(i)$ crosses the interface $\Gamma$ where gradients are discontinuous. By filtering $\mathcal{N}(i) \subseteq \mathcal{E}_{\mathrm{homo}}$, we ensure the polynomial fit respects the local regularity of each subdomain. The interface physics are instead handled explicitly by the jump loss on heterophilous edges.
+
+\begin{remark}
+    The stencil coefficients are computed once during preprocessing and stored as static edge attributes. During training, derivative evaluation reduces to a sparse matrix-vector multiplication (implemented as \texttt{scatter\_add}), adding negligible computational overhead compared to standard graph convolutions.
+\end{remark}
+
+% ================== Network Architecture ==================
+\section{Network Architecture}
+\label{sec:architecture}
+
+The G-GRN architecture is designed to map spatial coordinates to PDE solutions while respecting the underlying physics. The network ingests node positions and regional indicators, processes them through a sequence of message-passing layers that incorporate derivative information, and outputs pointwise solution estimates. A schematic of the data flow is:
+\begin{equation}
+    (x, y) \xrightarrow{\text{Fourier}} \mathbf{z}^{(0)} \xrightarrow{\text{Proj}} \mathbf{h}^{(0)} \xrightarrow{\text{GGRN} \times L} \mathbf{h}^{(L)} \xrightarrow{\text{Decode}} \hat{u}
+\end{equation}
+We describe each component in turn.
+
+\subsection{Fourier Feature Encoding}
+
+Neural networks are known to exhibit spectral bias, learning low-frequency components of the target function more readily than high-frequency ones. For PDEs with oscillatory solutions or sharp gradients near interfaces, this poses a practical obstacle. Following recent work on coordinate-based networks, we apply a random Fourier feature mapping to the input coordinates. Let $\mathbf{p} = (x, y)^\top \in \mathbb{R}^2$ denote a spatial location. The encoding is defined as
+\begin{equation}
+    \gamma(\mathbf{p}) = \left[ \cos(2\pi \mathbf{B} \mathbf{p}), \; \sin(2\pi \mathbf{B} \mathbf{p}) \right]^\top \in \mathbb{R}^{2D},
+\end{equation}
+where $\mathbf{B} \in \mathbb{R}^{D \times 2}$ is a fixed matrix with entries drawn from $\mathcal{N}(0, \sigma^2)$. The scale parameter $\sigma$ controls the frequency content: larger values bias the encoding toward higher frequencies. In our experiments, $D = 64$ and $\sigma \in [1, 10]$ provide a good balance between expressivity and training stability. The encoded coordinates are concatenated with the physics-informed features $(\phi, z)$ to form the initial node embedding:
+\begin{equation}
+    \mathbf{z}_i^{(0)} = \left[ \gamma(\mathbf{p}_i); \; \phi_i; \; z_i \right] \in \mathbb{R}^{2D + 2}.
+\end{equation}
+A linear projection then maps this to the hidden dimension $H$:
+\begin{equation}
+    \mathbf{h}_i^{(0)} = \mathbf{W}_{\text{in}} \mathbf{z}_i^{(0)} + \mathbf{b}_{\text{in}}, \quad \mathbf{h}_i^{(0)} \in \mathbb{R}^H.
+\end{equation}
+
+\subsection{GGRN Layer}
+
+The core of the architecture consists of $L$ identical processing layers, each updating node representations by incorporating local derivative information. A single GGRN layer performs the following operations.
+
+\textbf{Derivative aggregation.} Using the precomputed GFD stencil coefficients, we compute approximate spatial derivatives of the current hidden features. For node $i$, define
+\begin{equation}
+\begin{aligned}
+    \mathbf{h}_{i,x} &= \sum_{j \in \mathcal{N}(i)} w_{ij}^x \, (\mathbf{h}_j - \mathbf{h}_i), \quad
+    \mathbf{h}_{i,y} = \sum_{j \in \mathcal{N}(i)} w_{ij}^y \, (\mathbf{h}_j - \mathbf{h}_i), \\
+    \mathbf{h}_{i,\Delta} &= \sum_{j \in \mathcal{N}(i)} w_{ij}^{\Delta} \, (\mathbf{h}_j - \mathbf{h}_i),
+\end{aligned}
+\end{equation}
+where the sums run over homophilous neighbors only. These quantities approximate $\partial \mathbf{h} / \partial x$, $\partial \mathbf{h} / \partial y$, and $\nabla^2 \mathbf{h}$ at node $i$, respectively.
+
+\textbf{Feature concatenation.} The node feature and its derivatives are concatenated into a combined representation:
+\begin{equation}
+    \mathbf{c}_i = \left[ \mathbf{h}_i; \; \mathbf{h}_{i,x}; \; \mathbf{h}_{i,y}; \; \mathbf{h}_{i,\Delta} \right] \in \mathbb{R}^{4H}.
+\end{equation}
+
+\textbf{Nonlinear update.} A two-layer MLP with layer normalization and GELU activation transforms the concatenated features:
+\begin{equation}
+    \mathbf{h}_i' = \text{MLP}(\mathbf{c}_i) = \mathbf{W}_2 \, \text{GELU}\bigl(\text{LN}(\mathbf{W}_1 \mathbf{c}_i + \mathbf{b}_1)\bigr) + \mathbf{b}_2,
+\end{equation}
+where $\mathbf{W}_1 \in \mathbb{R}^{H \times 4H}$, $\mathbf{W}_2 \in \mathbb{R}^{H \times H}$, and LN denotes layer normalization.
+
+\textbf{Residual connection.} To facilitate gradient flow through deep networks, a skip connection adds the input to the output:
+\begin{equation}
+    \mathbf{h}_i^{(\ell+1)} = \mathbf{h}_i' + \mathbf{h}_i^{(\ell)}.
+\end{equation}
+The combination of derivative aggregation and residual updates distinguishes G-GRN from standard message-passing networks: rather than exchanging arbitrary learned messages, the network explicitly computes physics-motivated differential operators and learns how to combine them.
+
+\subsection{Decoder and Implementation}
+
+After $L$ layers of processing, the final node embeddings $\{\mathbf{h}_i^{(L)}\}$ are decoded to scalar solution values. A small MLP maps from hidden dimension to output:
+\begin{equation}
+    \hat{u}_i = \mathbf{w}_3^\top \, \text{GELU}(\mathbf{W}_{\text{dec}} \mathbf{h}_i^{(L)} + \mathbf{b}_{\text{dec}}) + b_3,
+\end{equation}
+where $\mathbf{W}_{\text{dec}} \in \mathbb{R}^{64 \times H}$ and $\mathbf{w}_3 \in \mathbb{R}^{64}$. The decoder is deliberately shallow---the bulk of the representational capacity resides in the processor layers, while the decoder merely extracts the scalar output from the learned representation. The derivative aggregation step admits an efficient implementation using the message-passing abstraction common in graph neural network libraries. Viewing $w_{ij}^x (\mathbf{h}_j - \mathbf{h}_i)$ as a ``message'' from $j$ to $i$, the aggregation becomes a weighted sum over incoming edges---precisely the operation provided by scatter-add primitives. In PyTorch Geometric notation:
+\begin{equation}
+    \mathbf{h}_{i,x} = \text{scatter\_add}\bigl( w^x \odot (\mathbf{h}_{\text{src}} - \mathbf{h}_{\text{dst}}), \; \text{dst\_index} \bigr),
+\end{equation}
+where $\odot$ denotes element-wise multiplication and the scatter operation groups contributions by destination node. This formulation leverages sparse matrix operations and runs efficiently on GPUs, scaling to graphs with millions of edges.
+
+\begin{remark}
+    The architecture embodies a key design principle: separate what the network must learn from what can be precomputed. The GFD stencils encode geometric and discretization information that would otherwise burden the network; the network's task is reduced to learning the solution operator conditioned on this structural prior. This division not only accelerates training but also improves generalization.
+\end{remark}
+
+%==============================================================================
+\section{Loss Function Design}
+\label{sec:loss}
+
+Training proceeds by minimizing a composite loss that enforces the governing PDE, boundary conditions, and interface jump constraints. Each term corresponds to a physical requirement, and their relative weighting reflects the priority assigned to different aspects of the solution.
+
+\subsection{Overall Structure and PDE Residual}
+
+The total loss is a weighted sum of four components:
+\begin{equation}
+    \mathcal{L} = w_{\text{pde}} \, \mathcal{L}_{\text{pde}} + w_{\text{bc}} \, \mathcal{L}_{\text{bc}} + w_{\text{jump}} \, \bigl( \mathcal{L}_{J_1} + \mathcal{L}_{J_2} \bigr),
+\end{equation}
+where $w_{\text{pde}}$, $w_{\text{bc}}$, and $w_{\text{jump}}$ are positive scalar weights. A direct formulation of the PDE residual would be $r_i = -\beta_i \nabla^2 \hat{u}_i - f_i$. However, when the coefficient contrast $\beta^+ / \beta^-$ is large, this formulation leads to imbalanced gradients: residuals in the high-$\beta$ region dominate the loss, starving the low-$\beta$ region of learning signal. To remedy this, we adopt a \textbf{normalized residual}:
+\begin{equation}
+    \tilde{r}_i = -\nabla^2 \hat{u}_i - \frac{f_i}{\beta_i}.
+\end{equation}
+Dividing through by $\beta_i$ rescales the equation so that both subdomains contribute comparably to the loss. The PDE loss is then
+\begin{equation}
+    \mathcal{L}_{\text{pde}} = \frac{1}{|\mathcal{V}_{\text{int}}|} \sum_{i \in \mathcal{V}_{\text{int}}} \tilde{r}_i^2,
+\end{equation}
+where $\mathcal{V}_{\text{int}} \subset \mathcal{V}$ denotes the set of interior nodes. This normalization is mathematically equivalent to solving $-\nabla^2 u = f / \beta$, which has identical solutions to the original problem but exhibits better-conditioned gradients during optimization.
+
+\subsection{Boundary and Interface Losses}
+
+Dirichlet conditions are enforced softly through a mean squared error over boundary nodes:
+\begin{equation}
+    \mathcal{L}_{\text{bc}} = \frac{1}{|\mathcal{V}_{\text{bd}}|} \sum_{i \in \mathcal{V}_{\text{bd}}} \bigl( \hat{u}_i - g_D(\mathbf{p}_i) \bigr)^2.
+\end{equation}
+The transmission conditions are enforced via heterophilous edges. For the value jump ($J_1$), orienting the difference so that it represents $u^+ - u^-$:
+\begin{equation}
+    \mathcal{L}_{J_1} = \frac{1}{|\mathcal{E}_{\text{hetero}}|} \sum_{(i,j) \in \mathcal{E}_{\text{hetero}}} \bigl( z_j \cdot (\hat{u}_j - \hat{u}_i) - g_1 \bigr)^2,
+\end{equation}
+where $z_j \in \{-1, +1\}$ ensures correct sign convention. For the flux jump ($J_2$), let $\mathbf{n}_{ij}$ denote the interface normal at the midpoint of edge $(i, j)$:
+\begin{equation}
+    \mathcal{L}_{J_2} = \frac{1}{|\mathcal{E}_{\text{hetero}}|} \sum_{(i,j) \in \mathcal{E}_{\text{hetero}}} \left( z_j \cdot \Bigl( \beta_j \frac{\partial \hat{u}_j}{\partial n} - \beta_i \frac{\partial \hat{u}_i}{\partial n} \Bigr) - g_2 \right)^2,
+\end{equation}
+where the normal derivative $\partial \hat{u}_k / \partial n = \nabla \hat{u}_k \cdot \mathbf{n}_{ij}$ is computed from the GFD-approximated gradients.
+
+\subsection{Weight Selection}
+
+The loss weights balance the contributions of each term. While optimal values depend on the specific problem, typical ranges are: $w_{\text{pde}} = 1.0$ (baseline), $w_{\text{bc}} \in [100, 200]$ (strong boundary anchoring), and $w_{\text{jump}} \in [10, 30]$ (moderate interface emphasis). The boundary loss receives the highest weight because Dirichlet conditions provide essential anchoring for well-posed elliptic problems. For high-contrast problems ($\beta^+ / \beta^- > 100$), the $J_2$ loss magnitude scales with $\max(\beta^+, \beta^-)$; we optionally normalize by this factor to prevent gradient explosion.
+
+\begin{remark}
+    The physics-informed loss obviates the need for labeled solution data during training---the network learns solely from the governing equations and constraints. When reference data is available, an auxiliary supervised loss $\mathcal{L}_{\text{data}} = \| \hat{u} - u_{\text{ref}} \|^2$ can be added to accelerate convergence.
+\end{remark}
+
+%==============================================================================
+\section{Training Strategy}
+\label{sec:training}
+
+The optimization landscape of physics-informed neural networks can be challenging, particularly for interface problems where multiple loss terms compete. We describe the standard training protocol and two specialized strategies for difficult cases.
+
+\subsection{Standard Training Protocol}
+
+For moderate coefficient contrasts ($\beta^+ / \beta^- \leq 10$), a straightforward optimization procedure suffices. We use Adam with initial learning rate $\eta_0 = 10^{-3}$ and a cosine annealing schedule:
+\begin{equation}
+    \eta(t) = \eta_{\min} + \frac{1}{2}(\eta_0 - \eta_{\min}) \left( 1 + \cos\frac{\pi t}{T} \right),
+\end{equation}
+where $t$ is the current epoch, $T$ is the total number of epochs, and $\eta_{\min} = 10^{-6}$. To prevent gradient explosions, we clip the global gradient norm with $g_{\max} = 1.0$. Typical runs use $T = 10{,}000$ epochs for a $32 \times 32$ resolution grid, achieving MSE on the order of $10^{-5}$ for well-posed problems.
+
+\subsection{Curriculum Learning for High-Contrast Coefficients}
+
+When the coefficient ratio exceeds 100---or when inverted ($\beta^- > \beta^+$)---pure physics-informed training often stalls. We address this with curriculum learning that gradually shifts emphasis from data supervision to physics constraints. The training loss is augmented with a data term whose weight decays linearly:
+\begin{equation}
+    w_{\text{data}}(t) = w_{\text{init}} \cdot \max\left(0, 1 - \frac{t}{T_{\text{decay}}}\right) + w_{\text{final}},
+\end{equation}
+with typical values $w_{\text{init}} = 200$, $T_{\text{decay}} = 0.8T$, and $w_{\text{final}} \in \{0, 10\}$. Early in training, strong data supervision guides the network toward the correct solution shape; as training progresses, the physics loss takes over.
+
+\subsection{Two-Phase Training for Complex Interfaces}
+
+Non-circular interfaces introduce additional challenges. We employ a two-phase approach: \textbf{Phase 1} ($t \in [0, T/3]$) uses only the data loss with $w_{\text{data}} = 1000$, forcing the network to learn the overall solution shape. The best model is saved at the end of this phase. \textbf{Phase 2} ($t \in [T/3, T]$) loads this model and resumes training with the full physics loss plus moderate data supervision ($w_{\text{data}} = 100$). This strategy decouples ``learning the solution'' from ``satisfying the physics,'' reducing final MSE by an order of magnitude compared to single-phase training.
+
+\begin{remark}
+    The training strategies reflect a broader principle: difficult optimization problems benefit from decomposition. By introducing auxiliary objectives and phased schedules, we guide the network through progressively harder tasks. This curriculum-based approach may be applicable to other physics-informed learning settings.
+\end{remark}
+
+\section{Experiments}
+\subsection{A placeholder figure}
+\begin{figure}[H]
+  \centering
+  % Overleaf built-in placeholder image:
+  \includegraphics[width=0.6\linewidth]{example-image}
+  % NOTE: Replace with your own image in images/ folder, e.g.:
+  % \includegraphics[width=0.6\linewidth]{filename.png}  % stored at images/filename.png
+  \caption{Example placeholder figure. Replace with \texttt{images/filename.png}.}
+  \label{fig:placeholder}
+\end{figure}
+
+\section{Conclusion}
+This template demonstrates a clean SciML-ready project structure with modular bibliography and figure handling.
+
+% ---------- Bibliography ----------
+\bibliographystyle{plainnat}  % or unsrtnat
+\bibliography{reference}
+
+\end{document}

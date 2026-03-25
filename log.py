@@ -1,16 +1,46 @@
 import os
 
-# 1. 基础 MMS 验证实验(Case 1: 圆形界面)
-# os.system('python run.py --case mms --config configs/case1/beta-m-p-1-10.yaml')
-# os.system('python run.py --case mms --config configs/case1/beta-m-p-1-100.yaml')
-# os.system('python run.py --case mms --config configs/case1/beta-m-p-10-1.yaml')
+# ============================================================================
+# Batch Experiment Runner for G-GRN
+# ============================================================================
 
-# 2. 复杂物理场测试 (Case 2: 角向振荡解)
-# os.system('python run.py --case oscillating --config configs/case2/config.yaml')
+RESOLUTIONS = [16, 24, 32, 64]
+NUM_LAYERS = 2
 
-# 3. 复杂几何界面测试 (Case 3: 椭圆界面)
-# os.system('python run.py --case elliptic --config configs/case3/config.yaml')
+# --- Case 1: MMS Circular Interface ---
+# Already completed. Uncomment to re-run.
+# for beta_m, beta_p in [(1, 10), (1, 100), (10, 1)]:
+#     for res in RESOLUTIONS:
+#         save_dir = f"./results/case1/beta-m-p-{beta_m}-{beta_p}-r-{res}"
+#         os.system(
+#             f"python run.py --case mms --config configs/case1/beta-m-p-{beta_m}-{beta_p}.yaml "
+#             f"--resolution {res} --num_layers {NUM_LAYERS} --epochs 1000 "
+#             f"--save_dir {save_dir}"
+#         )
 
+# --- Case 2: Oscillating Angular Solution ---
+for res in RESOLUTIONS:
+    save_dir = f"./results/case2/r-{res}"
+    os.system(
+        f"python run.py --case oscillating --config configs/case2/config.yaml "
+        f"--resolution {res} --num_layers {NUM_LAYERS} --epochs 2000 "
+        f"--save_dir {save_dir}"
+    )
 
-# 4. 收敛性研究 
-os.system('python run.py --case convergence --config configs/convergence/config.yaml')
+# --- Case 3: Elliptic Interface ---
+for res in RESOLUTIONS:
+    save_dir = f"./results/case3/r-{res}"
+    os.system(
+        f"python run.py --case elliptic --config configs/case3/config.yaml "
+        f"--resolution {res} --num_layers {NUM_LAYERS} --epochs 2000 "
+        f"--save_dir {save_dir}"
+    )
+
+# --- Convergence Study (GGRN vs PINN) ---
+# Already completed. Uncomment to re-run.
+# for beta_m, beta_p in [(1, 10), (1, 100), (10, 1)]:
+#     os.system(
+#         f"python run.py --case convergence --config configs/convergence/config.yaml "
+#         f"--beta_minus {beta_m} --beta_plus {beta_p} "
+#         f"--save_dir ./results/convergence/beta-m-p-{beta_m}-{beta_p}"
+#     )
