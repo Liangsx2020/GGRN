@@ -469,3 +469,8 @@ class StencilCoefficientComputer:
         data.coeff_lap = torch.from_numpy(coeff_lap).float().unsqueeze(1)  # [E, 1]
 
         return data
+
+if __name__ == "__main__":
+    gen = MMSDataGenerator(resolution=64)
+    data = gen.build_graph(verbose=True)
+    
