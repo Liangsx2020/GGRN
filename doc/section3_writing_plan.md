@@ -143,7 +143,7 @@ where $t$ is the current epoch, $T$ is the total training budget (typically $5 \
 
 ### Para 17 — Curriculum Learning
 
-In high-contrast scenarios ($\beta^+ / \beta^- \ge 100$) or inverted configurations, pure physics-based optimization often stagnates due to vanishing gradients in the low-diffusivity region. We address this with \textit{Curriculum Learning} \cite{bengio2009curriculum}, using synthetic data to guide the network toward a valid basin of attraction. We introduce an auxiliary supervision loss $\lambda_{\text{data}} \mathcal{L}_{\text{data}}$ with a linearly decaying weight:
+In high-contrast scenarios ($\beta^+ / \beta^- \ge 100$) or inverted configurations, pure physics-based optimization often stagnates due to vanishing gradients in the low-diffusivity region. A similar difficulty arises at the operator-learning level: Li et al. \cite{li2024physics} show that combining data supervision with PDE constraints converts operator learning into a semi-supervised problem, stabilizing optimization where purely physics-driven training fails. We adopt an analogous strategy at the instance level through \textit{Curriculum Learning} \cite{bengio2009curriculum}: sparse synthetic reference values guide the network toward a valid basin of attraction during early training, after which the data weight is annealed so that physics constraints dominate. We introduce an auxiliary supervision loss $\lambda_{\text{data}} \mathcal{L}_{\text{data}}$ with a linearly decaying weight:
 \begin{equation}
     \lambda_{\text{data}}(t) = \lambda_{\text{init}} \cdot \max\left(0, 1 - \frac{t}{T_{\text{decay}}}\right) + \lambda_{\text{final}}.
 \end{equation}
