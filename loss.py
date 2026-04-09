@@ -159,8 +159,12 @@ class ConsistentStrongFormLoss(nn.Module):
             loss_j2 = torch.tensor(0.0, device=u_pred.device)
             loss_jump = torch.tensor(0.0, device=u_pred.device)
 
-        # === Term 4: Supervised Data Loss ===
-        loss_data = (u_pred - data.y).pow(2).mean()
+        # === Term 4: Supervised Data Loss (masked to train_idx, 5% semi-supervision) ===
+        if hasattr(data, 'train_idx') and data.train_idx is not None:
+            idx = data.train_idx
+            loss_data = (u_pred[idx] - data.y[idx]).pow(2).mean()
+        else:
+            loss_data = torch.tensor(0.0, device=u_pred.device)
 
         # Total Loss
         total_loss = self.w_pde * loss_pde + self.w_bc * loss_bc + loss_jump + self.w_data * loss_data

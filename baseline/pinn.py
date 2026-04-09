@@ -95,8 +95,12 @@ class PINNStrongFormLoss(nn.Module):
         else:
             loss_jump = torch.tensor(0.0, device=u_pred.device)
 
-        # 4. Data Loss
-        loss_data = (u_pred - data.y).pow(2).mean()
+        # 4. Data Loss (masked to train_idx, identical 5% supervision for fair comparison with G-GRN)
+        if hasattr(data, 'train_idx') and data.train_idx is not None:
+            idx = data.train_idx
+            loss_data = (u_pred[idx] - data.y[idx]).pow(2).mean()
+        else:
+            loss_data = torch.tensor(0.0, device=u_pred.device)
 
         total_loss = self.w_pde * loss_pde + self.w_bc * loss_bc + self.w_jump * loss_jump + self.w_data * loss_data
 
