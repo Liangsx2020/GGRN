@@ -15,7 +15,6 @@ r_connect: null    # null = auto-scale: 4.5 / resolution
 max_order: 2
 beta_minus: 1.0
 beta_plus: 10.0
-data_frac: 0.05
 
 # --- 3. Model Architecture ---
 hidden_channels: 128
@@ -37,7 +36,6 @@ line_search_fn: strong_wolfe
 w_pde: 1.0
 w_bc: 200.0
 w_jump: 10.0
-w_data: 1000.0     # Supervised data loss weight (0.0 = disabled)
 w_j1: null          # null = use w_jump
 w_j2: 0.1           # Low weight: stencil-based flux derivatives are noisy at coarse grids
 j2_scale: null      # null = auto

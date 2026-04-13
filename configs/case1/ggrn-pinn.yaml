@@ -13,7 +13,5 @@ lr: 1.0
 w_pde: 1.0
 w_bc: 200.0
 w_jump: 10.0
-w_data: 1000.0
-# w_data: 0.0
 
 save_dir: ./results/case1/ggrn-vs-pinn

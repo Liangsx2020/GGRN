@@ -34,11 +34,9 @@ def get_args() -> argparse.Namespace:
     parser.add_argument('--case', type=str, default='mms', 
                         choices=['mms', 'oscillating', 'elliptic', 'convergence'],
                         help="Which case to run: mms, oscillating, elliptic, or convergence")
-    parser.add_argument('--config', type=str, default=None, 
+    parser.add_argument('--config', type=str, default=None,
                         help="Path to specific YAML config")
-    parser.add_argument('--data_frac', type=float, default=0.05, 
-                        help="Fraction of nodes used for supervised data loss (default: 5%)")
-    
+
     # Parse known basic args
     args, unknown = parser.parse_known_args()
 
@@ -82,7 +80,6 @@ def get_args() -> argparse.Namespace:
     # Add the strictly parsed args back into config
     cfg['case'] = args.case
     cfg['config'] = args.config
-    cfg['data_frac'] = args.data_frac 
 
     return argparse.Namespace(**cfg)
 

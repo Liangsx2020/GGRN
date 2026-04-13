@@ -8,8 +8,7 @@ Integrates:
 Components:
     1. PDE Residual: -Δu - f/β = 0 (Normalized form)
     2. Boundary Conditions: Dirichlet BC
-    3. Interface Jump Conditions: [u] = J1,[β∂u/∂n] = J2
-    4. Supervised Data Loss: u_pred vs u_exact
+    3. Interface Jump Conditions: [u] = J1, [β∂u/∂n] = J2
 """
 
 import torch
@@ -23,15 +22,14 @@ class ConsistentStrongFormLoss(nn.Module):
     Auto-adapts to circular or elliptic interfaces based on data attributes.
     """
     def __init__(self, w_pde: float = 1.0, w_bc: float = 100.0,
-                 w_jump: float = 10.0, w_data: float = 0.0,
+                 w_jump: float = 10.0,
                  w_j1: float = None, w_j2: float = None,
                  j2_scale: float = None):
         super().__init__()
         self.w_pde = w_pde
         self.w_bc = w_bc
         self.w_jump = w_jump
-        self.w_data = w_data
-        
+
         # Fallbacks for specific jump weights
         self.w_j1 = w_j1 if w_j1 is not None else w_jump
         self.w_j2 = w_j2 if w_j2 is not None else w_jump
@@ -159,15 +157,8 @@ class ConsistentStrongFormLoss(nn.Module):
             loss_j2 = torch.tensor(0.0, device=u_pred.device)
             loss_jump = torch.tensor(0.0, device=u_pred.device)
 
-        # === Term 4: Supervised Data Loss (masked to train_idx, 5% semi-supervision) ===
-        if hasattr(data, 'train_idx') and data.train_idx is not None:
-            idx = data.train_idx
-            loss_data = (u_pred[idx] - data.y[idx]).pow(2).mean()
-        else:
-            loss_data = torch.tensor(0.0, device=u_pred.device)
-
         # Total Loss
-        total_loss = self.w_pde * loss_pde + self.w_bc * loss_bc + loss_jump + self.w_data * loss_data
+        total_loss = self.w_pde * loss_pde + self.w_bc * loss_bc + loss_jump
 
         return total_loss, {
             "pde": loss_pde.item(),
@@ -175,7 +166,6 @@ class ConsistentStrongFormLoss(nn.Module):
             "j1": loss_j1.item(),
             "j2": loss_j2.item(),
             "jump": loss_jump.item(),
-            "data": loss_data.item()
         }
 
 # ============================================================================
@@ -191,7 +181,7 @@ if __name__ == "__main__":
     model = GGRN(hidden_channels=64, num_layers=3)
     u_pred_mms = model(data_mms)
     
-    criterion = ConsistentStrongFormLoss(w_pde=1.0, w_bc=100.0, w_jump=10.0, w_data=1.0)
+    criterion = ConsistentStrongFormLoss(w_pde=1.0, w_bc=100.0, w_jump=10.0)
     loss_mms, dict_mms = criterion(u_pred_mms, data_mms)
     print(f"✅ MMS Loss computed successfully! Total: {loss_mms.item():.4f}")
     print(f"   Breakdown: {dict_mms}")

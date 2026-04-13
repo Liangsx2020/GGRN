@@ -16,7 +16,7 @@ from data import MMSDataGenerator, OscillatingDataGenerator, EllipticInterfaceDa
 from model import GGRN
 from loss import ConsistentStrongFormLoss
 from train import Trainer
-from baseline import run_convergence_study  # <-- 引入我们刚才写的 Baseline 包
+from baseline import run_convergence_study
 
 
 def main():
@@ -46,18 +46,16 @@ def main():
     # 2. Data Pipeline
     print("\n[1/4] Generating Mesh and Graph...")
     if args.case == 'mms':
-        gen = MMSDataGenerator(resolution=args.resolution, beta_minus=args.beta_minus, beta_plus=args.beta_plus, data_frac=args.data_frac)
+        gen = MMSDataGenerator(resolution=args.resolution, beta_minus=args.beta_minus, beta_plus=args.beta_plus)
     elif args.case == 'oscillating':
         gen = OscillatingDataGenerator(
             resolution=args.resolution, beta_minus=args.beta_minus, beta_plus=args.beta_plus,
             m=getattr(args, 'm', 3), epsilon=getattr(args, 'epsilon', 0.3),
-            data_frac=args.data_frac
         )
     elif args.case == 'elliptic':
         gen = EllipticInterfaceDataGenerator(
             resolution=args.resolution, beta_minus=args.beta_minus, beta_plus=args.beta_plus,
             a=getattr(args, 'a', 0.6), b=getattr(args, 'b', 0.4),
-            data_frac=args.data_frac
         )
     else:
         raise ValueError(f"Unknown case: {args.case}")
@@ -75,7 +73,7 @@ def main():
 
     # 4. Training Execution (unified single-phase for all cases)
     criterion = ConsistentStrongFormLoss(
-        w_pde=args.w_pde, w_bc=args.w_bc, w_jump=args.w_jump, w_data=args.w_data,
+        w_pde=args.w_pde, w_bc=args.w_bc, w_jump=args.w_jump,
         w_j1=args.w_j1, w_j2=args.w_j2, j2_scale=args.j2_scale
     )
     hist, metrics, t_time = trainer.fit(

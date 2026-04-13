@@ -27,12 +27,11 @@ class PINNStrongFormLoss(nn.Module):
     Matches ConsistentStrongFormLoss logic to ensure fair comparison.
     """
     def __init__(self, w_pde: float = 1.0, w_bc: float = 200.0,
-                 w_jump: float = 10.0, w_data: float = 0.0):
+                 w_jump: float = 10.0):
         super().__init__()
         self.w_pde = w_pde
         self.w_bc = w_bc
         self.w_jump = w_jump
-        self.w_data = w_data
 
     def compute_autograd_derivatives(self, u: torch.Tensor, x: torch.Tensor):
         """Compute u_x, u_y, and Laplacian using torch.autograd"""
@@ -95,13 +94,6 @@ class PINNStrongFormLoss(nn.Module):
         else:
             loss_jump = torch.tensor(0.0, device=u_pred.device)
 
-        # 4. Data Loss (masked to train_idx, identical 5% supervision for fair comparison with G-GRN)
-        if hasattr(data, 'train_idx') and data.train_idx is not None:
-            idx = data.train_idx
-            loss_data = (u_pred[idx] - data.y[idx]).pow(2).mean()
-        else:
-            loss_data = torch.tensor(0.0, device=u_pred.device)
+        total_loss = self.w_pde * loss_pde + self.w_bc * loss_bc + self.w_jump * loss_jump
 
-        total_loss = self.w_pde * loss_pde + self.w_bc * loss_bc + self.w_jump * loss_jump + self.w_data * loss_data
-
-        return total_loss, {"pde": loss_pde.item(), "bc": loss_bc.item(), "jump": loss_jump.item(), "data": loss_data.item()}
+        return total_loss, {"pde": loss_pde.item(), "bc": loss_bc.item(), "jump": loss_jump.item()}

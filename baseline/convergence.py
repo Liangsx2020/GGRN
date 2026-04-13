@@ -26,22 +26,19 @@ def run_convergence_study(args, device):
         resolutions = list(res_arg)
         
     print(f"\n🚀 Starting PINN Baseline Study | Resolutions: {resolutions}")
-    print(f"📊 Supervised Data Fraction: {args.data_frac * 100}%")
-    
+
     # 用于记录最终结果的列表
-    csv_data =[]
+    csv_data = []
 
     for res in resolutions:
         print(f"\n{'='*50}\nResolution: {res}x{res} (h = {2.0/res:.4f})\n{'='*50}")
         h = 2.0 / res
 
-        # 1. 生成数据 (由于全局 seed 相同，这里的 5% 数据与 G-GRN 完全一致)
-        # 注意：PINN 不需要计算 GFD stencils，所以我们跳过 StencilCoefficientComputer，节省时间！
+        # 1. 生成数据 (PINN 不需要 GFD stencils，跳过 StencilCoefficientComputer 节省时间)
         gen = MMSDataGenerator(
             resolution=res, beta_minus=args.beta_minus, beta_plus=args.beta_plus,
-            data_frac=args.data_frac
         )
-        # PINN 不依赖 r_connect 构图求导，但为了兼容统一的 loss 接口（计算跳跃损失），我们依然传 r_connect
+        # PINN 不依赖 r_connect 求导，但为了兼容统一的 loss 接口（计算跳跃损失），依然传 r_connect
         r_connect = 4.5 / res
         data = gen.build_graph(r_connect).to(device)
 
@@ -49,7 +46,7 @@ def run_convergence_study(args, device):
         set_seed(args.seed)
         model_pinn = VanillaPINN(hidden_channels=args.hidden_channels, num_layers=args.num_layers)
         crit_pinn = PINNStrongFormLoss(
-            w_pde=args.w_pde, w_bc=args.w_bc, w_jump=args.w_jump, w_data=args.w_data
+            w_pde=args.w_pde, w_bc=args.w_bc, w_jump=args.w_jump
         )
         
         _, metrics_pinn, train_time = Trainer(model_pinn, device).fit(

@@ -23,11 +23,10 @@ class BasePDEDataGenerator:
     and computing basic features (phi, z). Derived classes must implement the 
     specific PDE math (exact solution, source term, jump conditions).
     """
-    def __init__(self, resolution: int = 32, 
+    def __init__(self, resolution: int = 32,
                  beta_minus: float = 1.0, beta_plus: float = 10.0,
                  refine_interface: bool = True, refine_layers: int = 2,
-                 refine_density: int = 64, refine_width: float = 0.1,
-                 data_frac: float = 0.05):  # <-- 新增 data_frac
+                 refine_density: int = 64, refine_width: float = 0.1):
         self.resolution = resolution
         self.beta_minus = beta_minus
         self.beta_plus = beta_plus
@@ -35,7 +34,6 @@ class BasePDEDataGenerator:
         self.refine_layers = refine_layers
         self.refine_density = refine_density
         self.refine_width = refine_width
-        self.data_frac = data_frac
 
     # --- Abstract Methods (To be implemented by subclasses) ---
     def get_level_set(self, pos: torch.Tensor) -> torch.Tensor:
@@ -122,14 +120,6 @@ class BasePDEDataGenerator:
             source=f_source, j1=j1_target, j2=j2_target,
             phi=phi, beta_minus=self.beta_minus, beta_plus=self.beta_plus
         )
-
-        # --- 将 5% 半监督机制“焊死”在图结构中 ---
-        if self.data_frac > 0:
-            n_data = max(1, int(n_nodes * self.data_frac))
-            # 随机选取 5% 的节点作为监督信号传感器
-            data.train_idx = torch.randperm(n_nodes)[:n_data]
-        else:
-            data.train_idx = None
 
         # Store characteristic mesh spacing for stencil normalization in model
         data.h_char = 2.0 / (self.resolution - 1)

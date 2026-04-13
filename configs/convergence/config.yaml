@@ -9,7 +9,7 @@ beta_minus: 10.0 # options: 1.0, 10.0, 1.0
 beta_plus: 1.0 # options: 10.0, 1.0, 100.0
 
 epochs: 1000
-num_layers: 3
+num_layers: 2
 resolutions: 16,24,32,64 # options: 16, 24, 32, 64
 
 # save_dir: ./results/convergence/beta-m-p-1-10
